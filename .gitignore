@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment variables / secrets
+.env
+
+# Source PDFs - transcribed to .md in docs/, kept local only (one also has plaintext AWS credentials)
+docs/pdf/
