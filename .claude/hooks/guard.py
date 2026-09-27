@@ -2,7 +2,8 @@
 
 1. Leer, editar o imprimir .env (se permite .env.example) y los PDF de docs/pdf.
 2. Commit, merge o push directo sobre main o develop.
-3. git commit si ruff falla.
+3. git commit: formatea y corrige con ruff los archivos del commit y los vuelve a agregar.
+   Solo bloquea si queda un error que ruff no puede corregir solo.
 """
 
 import json
@@ -29,8 +30,61 @@ def is_secret_path(path: str) -> bool:
 
 
 def current_branch() -> str:
-    out = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True)
+    out = subprocess.run(
+        ["git", "branch", "--show-current"], capture_output=True, text=True, check=False
+    )
     return out.stdout.strip()
+
+
+RUFF_FORMAT = (".py", ".pyi", ".ipynb", ".md")
+RUFF_LINT = (".py", ".pyi", ".ipynb")
+
+
+def git_lines(*args: str) -> list[str]:
+    out = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+    return [line for line in out.stdout.splitlines() if line]
+
+
+def ruff_autofix(all_tracked: bool) -> None:
+    """Corrige y formatea solo los archivos del commit y los vuelve a agregar al stage."""
+    files = set(git_lines("diff", "--cached", "--name-only", "--diff-filter=ACMR"))
+    if all_tracked:
+        files |= set(git_lines("diff", "--name-only", "--diff-filter=ACMR"))
+    files = sorted(
+        f
+        for f in files
+        if not f.startswith(".claude/") and PurePath(f).suffix in RUFF_FORMAT
+    )
+    lint = [f for f in files if PurePath(f).suffix in RUFF_LINT]
+    if not files:
+        return
+    if lint:
+        subprocess.run(
+            ["uv", "run", "ruff", "check", "--fix", "--quiet", *lint],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    subprocess.run(
+        ["uv", "run", "ruff", "format", "--quiet", *files],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    subprocess.run(
+        ["git", "add", "--", *files], capture_output=True, text=True, check=False
+    )
+    if lint:
+        res = subprocess.run(
+            ["uv", "run", "ruff", "check", *lint],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode != 0:
+            block(
+                f"ruff corrigió y formateó lo que pudo, pero quedan errores que hay que arreglar a mano:\n{res.stdout[-1500:]}"
+            )
 
 
 def check_bash(cmd: str) -> None:
@@ -46,7 +100,9 @@ def check_bash(cmd: str) -> None:
             continue
         if re.match(r"git\s+push\b", part):
             targets = set(re.findall(r"[\w./-]+", part)) & PROTECTED
-            refspecs = {t.split(":")[-1] for t in re.findall(r"\S+:\S+", part)} & PROTECTED
+            refspecs = {
+                t.split(":")[-1] for t in re.findall(r"\S+:\S+", part)
+            } & PROTECTED
             if targets or refspecs or (branch in PROTECTED and len(part.split()) <= 3):
                 block("push directo a main/develop. Abre un PR desde tu rama.")
         if re.match(r"git\s+merge\b", part) and branch in PROTECTED:
@@ -54,11 +110,7 @@ def check_bash(cmd: str) -> None:
         if re.match(r"git\s+commit\b", part):
             if branch in PROTECTED:
                 block(f"commit directo sobre {branch}. Crea una rama feat/... primero.")
-            for ruff in (["ruff", "check", "."], ["ruff", "format", "--check", "."]):
-                res = subprocess.run(["uv", "run", *ruff], capture_output=True, text=True)
-                if res.returncode != 0:
-                    fix = "uv run ruff check --fix . && uv run ruff format ."
-                    block(f"ruff falló. Corre `{fix}`\n{res.stdout[-1500:]}")
+            ruff_autofix(all_tracked=bool(re.search(r"\s(-a|--all|-\w*a\w*)\b", part)))
 
 
 def main() -> None:

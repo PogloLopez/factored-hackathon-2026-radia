@@ -5,8 +5,9 @@
 - Librería probada > código a mano.
 - Ruff como linter y formatter: `uv run ruff check --fix . && uv run ruff format .`
 - Tests con pytest en `tests/`, espejo de la ruta del código.
-- Contratos entre piezas en `contracts/`. Ver [[Trabajo_en_paralelo]].
+- Contratos entre piezas en `src/contracts/`. Ver [[Trabajo_en_paralelo]].
 - Identificadores en inglés. Comentarios y docs en español.
 - Secretos solo en `.env`. Nunca leerlo, imprimirlo ni commitearlo.
 - Datos nunca en Git (`data/local/`).
-- Cada quien en su carpeta: `data/` Pablo, `ml/` Isabella, `backend/` Edwin, `frontend/` Esteban.
+- Cada quien en su carpeta: `src/etl/` Pablo, `src/ml/` Isabella, `src/backend/` Edwin, `frontend/` Esteban.
+- snake_case en archivos y carpetas (excepto `README.md` y `CLAUDE.md`).

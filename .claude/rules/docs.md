@@ -5,8 +5,7 @@
 - Solo `.md`. Diagramas en mermaid.
 - Sin changelog ni backlog. El historial es Git.
 - Documentos vivos:
-  - [[Punto_de_partida]]: estado, decisiones y siguiente paso.
-  - [[Roadmap]]: hitos y pendientes.
-  - [[Propuesta]]: qué construimos y por qué.
-  - [[Trabajo_en_paralelo]]: contratos, repo y Git.
+  - [[roadmap]]: hitos y pendientes.
+  - [[propuesta]]: qué construimos y por qué.
+  - [[trabajo_en_paralelo]]: contratos, repo y Git.
 - Excepción: `README.md` raíz usa links relativos (GitHub).
