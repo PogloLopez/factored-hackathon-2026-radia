@@ -1,7 +1,12 @@
 [project]
-name = "factored-hackathon-2026-clozers"
+name = "factored-hackathon-2026-radia"
 version = "0.1.0"
-description = "Add your description here"
+description = "Radia. Sistema de atención AI-first para productos de crédito (Factored AI & Data Hackathon 2026)"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.9",
+]
