@@ -1,6 +1,6 @@
 # AI & Data Hackathon
 
-**KICKOFF — SEPTEMBER 25**
+KICKOFF — SEPTEMBER 25
 
 ---
 
@@ -29,7 +29,7 @@ Israel, CEO
 ### Timeline
 
 | Date | Milestone | Description |
-|---|---|---|
+| --- | --- | --- |
 | **SEP 01** | **Registration Opens** | Sign up and secure your spot. |
 | **SEP 25** | **Challenge Launch** | The full challenge is revealed and the **10-day build begins**. |
 | **OCT 5** | **Submissions Close** | Final solutions are submitted for expert evaluation. |
@@ -65,6 +65,7 @@ Israel, CEO
 > **Don't build a chatbot, build a customer-service system**
 
 **TASK SELECTION — One Focused Banking Workflow**
+
 1. Account / Payment Inquiries
 2. Card Support
 3. Transaction Disputes
@@ -81,6 +82,7 @@ Demonstrate robust customer service interactions in both **Spanish** and **Portu
 > The system should be able to: **Understand → Decide → Act → Verify → Escalate**
 
 **MINIMUM REQUIREMENTS**
+
 - Maintain conversational context
 - Clarify ambiguous requests
 - Retrieve trusted information
@@ -93,7 +95,7 @@ Demonstrate robust customer service interactions in both **Spanish** and **Portu
 > 💡 **Key idea: AI should not be autonomous just because it can be**
 
 | Case | Behavior | Description |
-|---|---|---|
+| --- | --- | --- |
 | ✅ **Normal Case** | Automated Resolution | Handles policy-compliant automated resolution, verified account queries, and authorized self-service transactions seamlessly |
 | ⚠️ **Ambiguous / Unsupported** | Clarification or Abstention | Asks clarifying questions or practices **safe policy abstention** when handling missing parameters or unsupported banking requests |
 | 🔀 **Human-Required** | Safe Escalation | Executes a structured handoff to human representatives, transferring verified facts and open questions **without dumping raw transcripts** |
@@ -103,6 +105,7 @@ Demonstrate robust customer service interactions in both **Spanish** and **Portu
 > **Baseline → Proposed System → Held-out Evaluation**
 
 **TECHNICAL RIGOR**
+
 - **Data Quality & Contracts:** Strict input schema enforcement
 - **Reproducible Preparation:** Deterministic pipeline execution
 - **Valid Labels:** Grounded relevance judgments & ground truth
@@ -111,6 +114,7 @@ Demonstrate robust customer service interactions in both **Spanish** and **Portu
 - **Learned Component:** Benchmark against a baseline model
 
 **KEY METRICS TO MEASURE**
+
 - **Safe Automated Resolution**
 - **Unsafe Outcomes**
 - **Cost Efficiency**
@@ -118,7 +122,7 @@ Demonstrate robust customer service interactions in both **Spanish** and **Portu
 ### Technical Deliverables — Prove It Works
 
 | Area | Requirement |
-|---|---|
+| --- | --- |
 | **Data-Backed Baseline** | Justify workflow selection using reproducible logs |
 | **Grounded AI Core** | Ground all responses in verified records |
 | **Controlled Automation** | Enforce action permissions besides model prompts |
@@ -129,7 +133,7 @@ Demonstrate robust customer service interactions in both **Spanish** and **Portu
 ### Multi-Disciplinary Evaluation — No Single Skill Is Mandatory
 
 | Discipline | Suggested Tasks |
-|---|---|
+| --- | --- |
 | **Artificial Intelligence** | Production backend and structured JSON handoffs |
 | **Machine Learning** | LLM/RAG orchestration and **prompt injection defense** |
 | **Data Engineering** | Strong ETL/ELT pipeline and **customer record isolation** |
@@ -138,7 +142,7 @@ Demonstrate robust customer service interactions in both **Spanish** and **Portu
 ### Think Beyond The Hackathon — Make Your Result A Real Service
 
 | Observability | Reliability | Security | Reproducibility |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Tracing | Bounded retries | Authentication | Setup instructions |
 | Execution records | Safe fallback | Access controls | Versioning |
 | Monitoring | Tool failure handling | Data retention | Repeatable evaluation |
@@ -154,11 +158,12 @@ Capacity limits • Data limitations • Language coverage • Deployment work �
 
 ## 04. Details
 
-### Event Logistics — Communication!
+### Event Logistics — Communication
 
 We will add you to the Hackathon community in **Slack**.
 
 **Recommendations:**
+
 - Keep in touch always with your team!!
 - We have some preset Channels, join and explore them!
 - We might create additional ones to share specific topics that may help you going through with the challenge
@@ -178,13 +183,14 @@ We will add you to the Hackathon community in **Slack**.
 
 > **Submit your tool no matter what!!!**
 
-**Submit all of this to: hackathon.admin@factored.ai**
+**Submit all of this to: <hackathon.admin@factored.ai>**
 
 ### Event Logistics — Tools & Resources
 
 **You're free to use any language and/or set of tools you deem necessary!**
 
 Some (maybe) valuable resources:
+
 - Microsoft Azure
 - Snowflake
 - AWS
@@ -212,7 +218,7 @@ Remember we do have a code of conduct.
 ## 05. Prizes
 
 | Place | Prize |
-|---|---|
+| --- | --- |
 | 🥇 **1st** | **US$ 6,000** |
 | 🥈 **2nd** | **US$ 3,000** |
 | 🥉 **3rd** | **US$ 1,000** |
@@ -221,4 +227,4 @@ Remember we do have a code of conduct.
 
 ---
 
-## Happy Coding!
+## Happy Coding
