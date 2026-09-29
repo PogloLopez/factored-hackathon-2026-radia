@@ -12,7 +12,7 @@ El código es la fuente de verdad. Los borradores de [[trabajo_en_paralelo]] son
 | C4, C5 | `ml.py` | Predicción de cupo y de riesgo | pydantic | modelos | política, job de ofertas |
 | C6 | `data/active_offers.py` | Ofertas vigentes con versión y vencimiento | pandera | job de ofertas | tools, web |
 | C7 | `policy.py` | Entrada, decisión e interfaz de la política | pydantic | política | job de ofertas, orquestador |
-| C8 | `api.py` | API hacia la web | pydantic | backend | web. **Pendiente**, con el backend |
+| C8 | `api.py` | API hacia la web: request y response por endpoint | pydantic | backend | web |
 | C9 | `handoff.py` | Expediente de handoff | pydantic | orquestador | analista, asesor |
 | C10 | `eval_case.py` | Casos de evaluación | pydantic | todos | runner de evaluación |
 | C11 | `trace.py` | Tracing por turno | pydantic | orquestador | métricas, evaluación |
