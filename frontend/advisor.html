@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Radia · Consola del asesor</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <script src="/web/common.js" defer></script>
+    <script src="/web/advisor.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Radia · Consola del asesor</strong>
+      <nav aria-label="Principal">
+        <button type="button" id="refresh" class="secondary">Actualizar</button>
+        <button type="button" id="logout" class="secondary">Cerrar sesión</button>
+      </nav>
+    </header>
+    <main>
+      <h1>Sesiones traspasadas</h1>
+      <p class="notice" role="note">
+        <strong>Política sintética:</strong> el rango de negociación no es una
+        decisión real de crédito.
+      </p>
+      <div id="list-error" class="error" role="alert" hidden></div>
+      <p id="list-status" class="muted" role="status">Cargando sesiones…</p>
+      <div id="sessions"></div>
+    </main>
+  </body>
+</html>

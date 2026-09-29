@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Radia · Chat</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <script src="/web/common.js" defer></script>
+    <script src="/web/chat.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Radia · Banco sintético</strong>
+      <nav aria-label="Principal">
+        <a href="/web/customer.html">Mi cuenta</a>
+        <a href="/web/chat.html" aria-current="page">Chat</a>
+        <button type="button" id="logout" class="secondary">Cerrar sesión</button>
+      </nav>
+    </header>
+    <main>
+      <h1>Chat</h1>
+      <p class="notice" role="note">
+        <strong>Política sintética:</strong> no es una decisión real de crédito.
+      </p>
+
+      <div class="status-bar" aria-label="Estado de la conversación">
+        <span>Estado: <strong id="chat-state">Sin conversación</strong></span>
+        <span id="application-ref" hidden></span>
+        <span id="case-ref" hidden></span>
+      </div>
+
+      <ol id="messages" class="messages" aria-live="polite" aria-label="Mensajes"></ol>
+
+      <section id="confirm-box" class="card highlighted" hidden aria-labelledby="confirm-title">
+        <h2 id="confirm-title">Confirmación pendiente</h2>
+        <p id="confirm-summary"></p>
+        <div class="actions">
+          <button type="button" id="confirm-yes">Sí, confirmo</button>
+          <button type="button" id="confirm-no" class="secondary">No</button>
+        </div>
+      </section>
+
+      <div id="chat-error" class="error" role="alert" hidden></div>
+
+      <form id="chat-form">
+        <label for="chat-input">Tu mensaje</label>
+        <textarea id="chat-input" name="message" maxlength="2000" required></textarea>
+        <div class="actions">
+          <button type="submit" id="chat-send">Enviar</button>
+          <button type="button" id="chat-reset" class="secondary">Nueva conversación</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
