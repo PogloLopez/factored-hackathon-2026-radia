@@ -178,9 +178,15 @@ def check_bash(cmd: str) -> None:
             "(manifiesto aprobado, descarga única)."
         )
 
+    subcommands = git_subcommands(cmd)
+    # El hook corre antes del comando: con dos commits encadenados, el ruff del
+    # segundo agrega sus archivos al stage antes del primero y rompe la atomicidad.
+    if sum(sub == "commit" for sub, _ in subcommands) > 1:
+        block("un solo git commit por comando, para que cada commit sea atómico.")
+
     branch = current_branch()
     staged_in_cmd: list[str] = []
-    for sub, args in git_subcommands(cmd):
+    for sub, args in subcommands:
         if sub == "add":
             staged_in_cmd += add_pathspecs(args)
         if sub == "push":

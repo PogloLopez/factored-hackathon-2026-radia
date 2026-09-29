@@ -326,3 +326,10 @@ def test_main_archivo_secreto_bloqueado(env, monkeypatch):
 def test_main_herramienta_desconocida_y_sin_input(env, monkeypatch):
     run_main(monkeypatch, {"tool_name": "Otra", "tool_input": None})
     run_main(monkeypatch, {"tool_name": "PowerShell"})
+
+
+def test_dos_commits_en_un_comando_bloqueado(env):
+    assert_blocked(
+        'git add a.py && git commit -m "a" && git add b.py && git commit -m "b"'
+    )
+    assert env["ruff"] == []
