@@ -73,6 +73,10 @@ def build_silver(
     missing = [c for c in spec.columns if c not in bronze_cols]
     ignored = set(spec.columns) | set(METADATA_COLUMNS) | set(PARTITION_COLUMNS)
     unexpected = [c for c in bronze_cols if c not in ignored]
+    missing_pk = [c for c in spec.primary_key if c not in bronze_cols]
+    if missing_pk:
+        # Sin PK todas las filas se descartarían y Silver quedaría vacío.
+        raise ValueError(f"{spec.name}: Bronze no trae la PK {missing_pk}")
 
     # Texto limpio por columna; una columna ausente en Bronze queda NULL.
     raw = {
@@ -125,6 +129,9 @@ def build_silver(
         """
     )
     rows_out = _count(con, "SELECT COUNT(*) FROM latest")
+    if rows_in > 0 and rows_out == 0:
+        # No se pisa un Silver bueno con uno vacío.
+        raise ValueError(f"{spec.name}: {rows_in} filas en Bronze y 0 válidas")
 
     out = silver_path(settings, spec.name)
     out.parent.mkdir(parents=True, exist_ok=True)
