@@ -517,3 +517,33 @@ def test_handoff_responde_sin_llm_ni_cambiar_idioma(tools, sink):
     assert session.language.value == "es"
     assert reply.handoff_case_id in again.reply and "Tu caso" in again.reply
     assert last_trace(sink).intent == "in_handoff"
+
+
+class DownApplicationStore(InMemoryApplicationStore):
+    def create(self, application):
+        raise RuntimeError("solicitudes caídas")
+
+
+class DownCaseStore(InMemoryCaseStore):
+    def save(self, case):
+        raise RuntimeError("casos caídos")
+
+
+def test_handoff_fallido_tras_aceptar_limpia_la_sesion(tools, sink, offers_df):
+    box = ToolBox(
+        InMemoryOfferRepository(offers_df),
+        DownApplicationStore(),
+        DownCaseStore(),
+        clock=tools.clock,
+        wait=wait_none(),
+    )
+    orch = Orchestrator(FakeLanguageModel(), box, sink, clock=tools.clock)
+    session, [reply] = chat(orch, "C1", "Quiero una tarjeta básica")
+    conf = reply.pending_confirmation.confirmation_id
+    done = orch.confirm(session.session_id, conf, accept=True)
+    assert done.state == SessionState.IDLE
+    assert done.pending_confirmation is None and session.pending is None
+    assert last_trace(sink).outcome == Outcome.FALLBACK
+    # La confirmación vieja ya no sirve.
+    orch.confirm(session.session_id, conf, accept=True)
+    assert last_trace(sink).outcome == Outcome.REFUSED
