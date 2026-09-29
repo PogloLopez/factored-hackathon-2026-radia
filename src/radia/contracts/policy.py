@@ -34,7 +34,7 @@ from radia.contracts.common import (
 )
 from radia.contracts.ml import LimitPrediction, RiskEstimate
 
-CONTRACT_VERSION = "0.1.0"
+CONTRACT_VERSION = "0.2.0"
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -128,6 +128,8 @@ class PolicyDecision(BaseModel):
         lo, mid, hi = limits
         if has_limit and not lo <= mid <= hi:
             raise ValueError("se exige negotiation_min <= offered <= negotiation_max")
+        if has_limit and self.alternative_product_code is not None:
+            raise ValueError("la alternativa solo va cuando no hay cupo")
         if has_limit and not self.limit_model_version:
             raise ValueError("todo cupo trae la versión del modelo que lo sugirió")
         return self
