@@ -4,7 +4,8 @@
 archivos ni el reloj; las reglas se cargan una vez al construir la clase.
 
 Orden (ver [[propuesta]], sección 4):
-1. Exclusiones: cliente no activo o mora vigente alta. No elegible, final.
+1. Exclusiones: cliente no activo o mora vigente alta. No elegible, sin cupo.
+   Si pide humano o disputa, va al asesor (sin cupo).
 2. Exposición: la del producto; un monto pedido sobre el tope la sube un nivel.
 3. Nivel base: matriz banda x exposición. Sin puntaje, analista (missing_data).
 4. Excepciones: suman analista y/o asesor. Nunca bajan el nivel.
@@ -12,8 +13,8 @@ Orden (ver [[propuesta]], sección 4):
    automático.
 
 Un nivel se ve como dos banderas, analista y asesor. Las excepciones solo
-prenden banderas, así nunca bajan el nivel. `not_eligible` va aparte: la
-exclusión es final; el no elegible de la matriz solo lo cambia el asesor.
+prenden banderas, así nunca bajan el nivel. `not_eligible` va aparte: solo
+una disputa o un pedido de humano lo llevan al asesor, siempre sin cupo.
 """
 
 from radia.backend.policy.rules import (
