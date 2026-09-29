@@ -1,5 +1,6 @@
 """CLI del ETL: `uv run radia-etl --help`."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -9,7 +10,9 @@ import typer
 from radia.config import CREDIT_TABLES, get_settings
 from radia.etl import s3
 from radia.etl.bronze import build_bronze
+from radia.etl.gold import build_features, build_limit_labels, gold_path
 from radia.etl.offers import run_offers_job
+from radia.etl.score import DEFAULT_WEIGHTS, build_score
 from radia.etl.silver import build_silver
 from radia.etl.tables import TableSpec, select_tables
 
@@ -118,6 +121,49 @@ def silver(tables: TablesOption = None) -> None:
             f"cast={sum(r.cast_failures.values())} huerfanos={r.orphans}"
         )
     typer.echo(f"Reportes: {settings.data_dir / 'quality'}")
+
+
+@app.command()
+def gold(
+    snapshot: Annotated[
+        datetime | None,
+        typer.Option(
+            formats=["%Y-%m-%d"],
+            help="Fecha de corte. Por defecto, la última transacción en Silver.",
+        ),
+    ] = None,
+) -> None:
+    """Construye features (C1) y etiquetas de cupo (C2) desde Silver."""
+    settings = get_settings()
+    cutoff = snapshot.date() if snapshot else None
+    features = build_features(settings, cutoff)
+    snapshot_date = (
+        features["snapshot_date"].iloc[0].date() if len(features) else cutoff
+    )
+    labels = build_limit_labels(settings, snapshot_date)
+    typer.echo(f"Corte: {snapshot_date}")
+    typer.echo(f"{'customer_features':24} {len(features):>9} filas")
+    typer.echo(f"{'limit_labels':24} {len(labels):>9} filas")
+    typer.echo(f"Gold: {gold_path(settings, 'customer_features').parent}")
+
+
+@app.command()
+def score(
+    weights: Annotated[
+        Path, typer.Option(help="YAML de pesos. Los v0 son provisionales.")
+    ] = DEFAULT_WEIGHTS,
+) -> None:
+    """Calcula el puntaje interno (C3) desde las features Gold."""
+    settings = get_settings()
+    scores = build_score(settings, weights)
+    valid = scores["score"].dropna()
+    typer.echo(
+        f"{scores['score_version'].iloc[0] if len(scores) else '-'}: "
+        f"{len(scores)} clientes, {scores['score'].isna().sum()} sin puntaje"
+    )
+    if len(valid):
+        typer.echo(f"Mediana {valid.median():.0f}, rango {valid.min()} a {valid.max()}")
+    typer.echo(f"Salida: {gold_path(settings, 'internal_score')}")
 
 
 @app.command()
