@@ -61,6 +61,9 @@ from radia.contracts.handoff import HandoffCase, HandoffType, Priority
 from radia.contracts.trace import Outcome, ToolCall, TurnTrace
 
 SESSION_TTL = timedelta(minutes=30)
+# Tras vencer, la sesión se conserva este margen (responde "venció") y luego
+# se expulsa del diccionario para que no crezca sin límite.
+SESSION_EVICT_AFTER = timedelta(minutes=30)
 GENERIC_PRODUCT = {Language.ES: "crédito", Language.PT: "crédito"}
 GENERIC_PRODUCT[Language.EN] = "credit"
 
@@ -151,12 +154,14 @@ class Orchestrator:
         *,
         clock: Callable[[], datetime] = utc_now,
         session_ttl: timedelta = SESSION_TTL,
+        evict_after: timedelta = SESSION_EVICT_AFTER,
     ) -> None:
         self.llm = llm
         self.tools = tools
         self.sink = sink
         self.clock = clock
         self.session_ttl = session_ttl
+        self.evict_after = evict_after
         self.sessions: dict[str, Session] = {}
 
     # --- API pública ---------------------------------------------------------
@@ -174,6 +179,7 @@ class Orchestrator:
         `currency` y `usd_per_unit` (USD por unidad local) vienen del lado
         servidor. Sin tasa, un monto en moneda local no se usa para enrutar.
         """
+        self._evict_expired()
         session = Session(
             session_id=f"SES-{uuid.uuid4().hex[:10].upper()}",
             customer_id=customer_id,
@@ -730,7 +736,20 @@ class Orchestrator:
 
     # --- Soporte ---------------------------------------------------------------
 
+    def _evict_expired(self) -> None:
+        """Expulsa las sesiones vencidas hace más de `evict_after`.
+
+        Corre en cada acceso (abrir sesión, mensaje, confirmación). Recorre todas
+        las sesiones: suficiente para el volumen de la demo.
+        """
+        cutoff = self.clock() - self.evict_after
+        for session_id in [
+            sid for sid, s in self.sessions.items() if s.expires_at < cutoff
+        ]:
+            del self.sessions[session_id]
+
     def _session(self, session_id: str) -> Session:
+        self._evict_expired()
         try:
             return self.sessions[session_id]
         except KeyError:
