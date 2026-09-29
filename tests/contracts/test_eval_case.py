@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from radia.contracts.common import AttentionLevel
 from radia.contracts.eval_case import (
+    CONTRACT_VERSION,
     FAILURES_BY_CATEGORY,
     REQUIRES_FAILURE,
     Behavior,
@@ -137,3 +138,15 @@ def test_frozen_and_extra_forbid():
         case(extra_field=1)
     with pytest.raises(ValidationError):
         Expected(attention_level="automatic", nope=1)
+
+
+def test_contract_version():
+    assert CONTRACT_VERSION == "0.2.0"
+
+
+def test_refuse_behavior():
+    assert Behavior("refuse") is Behavior.REFUSE
+    e = Expected(must=["refuse"], must_not=["reveal_other_customer"])
+    assert e.must == [Behavior.REFUSE]
+    with pytest.raises(ValidationError):
+        Expected(must=[Behavior.REFUSE], must_not=[Behavior.REFUSE])
