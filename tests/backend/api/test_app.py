@@ -24,6 +24,7 @@ from radia.eval.demo_customers import demo_offers
 AUTOMATIC_CUSTOMER = "DEMO000001"  # Tarjeta básica automática (México).
 ANALYST_CUSTOMER = "DEMO000008"  # Préstamo personal al analista.
 ADVISOR_CUSTOMER = "DEMO000018"  # Premium: tarjeta oro al asesor.
+BOTH_CUSTOMER = "DEMO000003"  # Hipoteca: analista y luego asesor.
 OFFLINE = Path("no-existe-data-dir-de-tests")
 
 
@@ -241,6 +242,70 @@ def test_analyst_decision_unknown_case_is_404(client, analyst):
         json={"decision": "approve"},
     )
     assert response.status_code == 404
+
+
+def _both_case(client, headers_for) -> str:
+    reply = _chat(client, headers_for(BOTH_CUSTOMER), "Quiero una hipoteca")
+    body = reply.json()
+    assert body["state"] == "handoff", body
+    return body["handoff_case_id"]
+
+
+def _advisor_cases_for(client, advisor, analyst_case_id) -> list[dict]:
+    sessions = client.get("/advisor/sessions", headers=advisor).json()["sessions"]
+    reason = f"analyst_approved:{analyst_case_id}"
+    return [s["case"] for s in sessions if s["case"]["trigger_reason"] == reason]
+
+
+def test_approving_analyst_and_advisor_opens_advisor_case(
+    client, headers_for, analyst, advisor
+):
+    case_id = _both_case(client, headers_for)
+    cases = client.get("/analyst/cases", headers=analyst).json()["cases"]
+    analyst_case = next(c for c in cases if c["case_id"] == case_id)
+    assert analyst_case["policy_decision"]["attention_level"] == "analyst_and_advisor"
+    assert _advisor_cases_for(client, advisor, case_id) == []
+
+    response = client.post(
+        f"/analyst/cases/{case_id}/decision",
+        headers=analyst,
+        json={"decision": "approve"},
+    )
+    assert response.status_code == 200
+
+    [follow_up] = _advisor_cases_for(client, advisor, case_id)
+    assert follow_up["case_id"] != case_id
+    assert follow_up["handoff_type"] == "advisor"
+    assert follow_up["status"] == "pending"
+    assert follow_up["customer_id"] == BOTH_CUSTOMER
+    assert follow_up["policy_decision"] == analyst_case["policy_decision"]
+    assert follow_up["verified_facts"] == analyst_case["verified_facts"]
+    assert any(case_id in a for a in follow_up["actions_taken"])
+
+
+@pytest.mark.parametrize("decision", ["reject", "request_info"])
+def test_non_approval_opens_no_advisor_case(
+    client, headers_for, analyst, advisor, decision
+):
+    case_id = _both_case(client, headers_for)
+    client.post(
+        f"/analyst/cases/{case_id}/decision",
+        headers=analyst,
+        json={"decision": decision},
+    )
+    assert _advisor_cases_for(client, advisor, case_id) == []
+
+
+def test_approving_analyst_only_case_opens_no_advisor_case(
+    client, headers_for, analyst, advisor
+):
+    case_id = _analyst_case(client, headers_for)
+    client.post(
+        f"/analyst/cases/{case_id}/decision",
+        headers=analyst,
+        json={"decision": "approve"},
+    )
+    assert _advisor_cases_for(client, advisor, case_id) == []
 
 
 # --- Asesor --------------------------------------------------------------------
