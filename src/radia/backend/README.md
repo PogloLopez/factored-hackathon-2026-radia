@@ -99,6 +99,8 @@ flowchart LR
 - Sesión en handoff: respuesta fija, sin llamar al LLM ni cambiar el idioma.
 - Sesiones vencidas: responden "venció" durante `evict_after` y luego se expulsan en el siguiente acceso.
 - El diccionario de sesiones se protege con un lock: crear, leer y expulsar son seguros entre hilos.
+- Cada sesión tiene su lock. Cubre todo el turno (mensaje o confirmación). Dos clics simultáneos en "Sí" crean una sola solicitud: el segundo ve la confirmación ya consumida.
+- Orden de locks: el del diccionario solo para buscar la sesión y se suelta; luego el de la sesión. Sin deadlocks.
 
 Permisos (en `tools.py`, fuera del LLM):
 
@@ -107,6 +109,8 @@ Permisos (en `tools.py`, fuera del LLM):
 - Idempotente por `confirmation_id`: un reintento no duplica la solicitud.
 - Una solicitud por oferta y cliente. Otra con distinta confirmación se deniega (`application_exists`), no se devuelve la existente: no se reporta como nueva una acción que no ocurrió.
 - El orquestador revisa antes (`find_application`): si ya existe, informa la referencia y no pide confirmar.
+- Si esa búsqueda cae y al confirmar la tool deniega `application_exists`, se informa la existente (la denegación trae su referencia). No hay handoff.
+- Chequeo y alta en una sola sección crítica del store (`create_if_absent`, con lock): confirmaciones concurrentes no duplican.
 - Registra el monto confirmado, nunca más que el cupo (`amount_above_offer`).
 - Cada turno pasa su propio recolector de `ToolCall`: turnos concurrentes no mezclan trazas.
 
