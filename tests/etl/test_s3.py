@@ -168,3 +168,19 @@ def test_falla_al_guardar_estado_no_corta_el_bucle(client, tmpdir_path, monkeypa
     with pytest.raises(PermissionError):
         s3.download(client, m, tmpdir_path, max_concurrency=2)
     assert s3.pending_entries(m, tmpdir_path) == []
+
+
+def test_guardar_estado_reintenta_permission_error(tmpdir_path, monkeypatch):
+    real_replace = s3.os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError("archivo abierto por el antivirus")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(s3.os, "replace", flaky_replace)
+    s3._save_state(tmpdir_path, {"k": "etag"})
+    assert s3._load_state(tmpdir_path) == {"k": "etag"}
+    assert calls["n"] == 3
