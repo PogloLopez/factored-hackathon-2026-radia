@@ -144,3 +144,15 @@ def test_round_trip_json():
     again = HandoffCase.model_validate_json(c.model_dump_json())
     assert again == c
     assert json.loads(c.model_dump_json())["priority"] == "high"
+
+
+def test_politica_caida_escala_sin_decision_con_preguntas():
+    c = HandoffCase(
+        **case_data(policy_decision=None, open_questions=["La política no respondió"])
+    )
+    assert c.policy_decision is None
+
+
+def test_sin_decision_ni_preguntas_falla():
+    with pytest.raises(ValidationError):
+        HandoffCase(**case_data(policy_decision=None, open_questions=[]))
