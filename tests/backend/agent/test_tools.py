@@ -1,5 +1,8 @@
 """Tests de la capa de permisos, reintentos y fuentes de las tools."""
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import pytest
@@ -7,6 +10,7 @@ from tenacity import wait_none
 
 from radia.backend.agent.session import PendingConfirmation, Session
 from radia.backend.agent.tools import (
+    InMemoryApplicationStore,
     InMemoryOfferRepository,
     ToolBox,
     ToolDenied,
@@ -188,3 +192,34 @@ def test_segunda_solicitud_de_la_misma_oferta_denegada(tools, calls):
         tools.create_application(s, "O1", "CONF-2", calls=calls)
     assert list(tools.applications.applications) == [first.reference]
     assert tools.find_application(s, "O1", calls=calls) == first
+
+
+class SlowStore(InMemoryApplicationStore):
+    """Alta lenta: sin sección crítica, dos hilos verían la oferta libre."""
+
+    def create(self, application):
+        time.sleep(0.05)
+        return super().create(application)
+
+
+def test_confirmaciones_concurrentes_crean_una_sola_solicitud(offers_df, tools):
+    box = ToolBox(
+        InMemoryOfferRepository(offers_df),
+        SlowStore(),
+        clock=tools.clock,
+        wait=wait_none(),
+    )
+    barrier = threading.Barrier(2)
+
+    def apply(confirmation_id):
+        s = session(pending=accepted(confirmation_id=confirmation_id))
+        barrier.wait()
+        try:
+            return box.create_application(s, "O1", confirmation_id, calls=[])
+        except ToolDenied as exc:
+            return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(apply, ["CONF-A", "CONF-B"]))
+    assert len(box.applications.applications) == 1
+    assert results.count("application_exists") == 1
