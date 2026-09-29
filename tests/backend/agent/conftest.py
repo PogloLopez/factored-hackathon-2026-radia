@@ -10,6 +10,7 @@ Clientes:
 import json
 from datetime import UTC, datetime
 
+import groq
 import pandas as pd
 import pytest
 from tenacity import wait_none
@@ -88,6 +89,20 @@ def demo_offers():
 
 def clock():
     return NOW
+
+
+class RealGroqForbidden(RuntimeError):
+    """Un test intentó crear el cliente real de Groq (red y gasto)."""
+
+
+@pytest.fixture(autouse=True)
+def forbid_real_groq(monkeypatch):
+    """Ningún test instancia `groq.Groq`: se usa un cliente falso inyectado."""
+
+    def refuse(*args, **kwargs):
+        raise RealGroqForbidden("los tests nunca llaman a Groq real")
+
+    monkeypatch.setattr(groq.Groq, "__init__", refuse)
 
 
 @pytest.fixture
