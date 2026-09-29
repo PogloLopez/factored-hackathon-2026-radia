@@ -438,6 +438,26 @@ UNSUPPORTED = {
         r"\b(inversion(es)?|invertir|investimentos?|investir|invest(ment)?s?)\b"
     ),
 }
+# Intención de solicitar un crédito: verbo de pedido seguido de un producto.
+APPLY_INTENT = _rx(
+    r"\b(quiero|quero|necesito|preciso|solicitar|solicito|pedir|want|need"
+    r"|apply)\b(\W+\w+){0,3}?\W+(prestamo|emprestimo|loan|credito|tarjeta"
+    r"|cartao|card|hipoteca|mortgage)"
+)
+# Temas donde nombrar el producto es parte del tema ("perdí mi tarjeta",
+# "queja por mi préstamo"): ahí solo gana una intención de solicitud.
+TOPICS_ABOUT_PRODUCT = {UnsupportedTopic.LOST_CARD, UnsupportedTopic.COMPLAINT}
+
+
+def _credit_wins(
+    topic: UnsupportedTopic, product: ProductCode | None, text: str
+) -> bool:
+    """Un tema no soportado no gana si también se pide un crédito."""
+    if APPLY_INTENT.search(text):
+        return True
+    return product is not None and topic not in TOPICS_ABOUT_PRODUCT
+
+
 DISPUTE = _rx(
     r"no estoy de acuerdo|\bdisputa|\binjust[oa]\b|\bapelar\b|reconsidera"
     r"|\bdiscordo\b|\bcontestar\b|nao concordo|disagree|\bappeal\b"
@@ -558,6 +578,8 @@ class FakeLanguageModel:
         declared = amount if DECLARED_INCOME.search(text) else None
         in_usd = amount is not None and bool(USD.search(text_wo_ids))
         topic = next((t for t, rx in UNSUPPORTED.items() if rx.search(text)), None)
+        if topic is not None and _credit_wins(topic, product, text):
+            topic = None
 
         if topic is not None:
             intent = Intent.UNSUPPORTED
