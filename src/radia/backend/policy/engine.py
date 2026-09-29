@@ -94,9 +94,15 @@ class RulesPolicy:
 
         analyst_reasons = self._analyst_reasons(inp)
 
-        # No elegible por matriz: solo el asesor lo cambia (p. ej. una disputa).
+        # No elegible por matriz: solo lo cambia una disputa o un pedido de humano,
+        # que van al asesor sin cupo. Las razones de analista viajan como alertas
+        # para que el asesor las vea. El trato preferencial no cambia la decisión
+        # de riesgo (propuesta, sección 4), así que no rescata un no elegible.
         if base == AttentionLevel.NOT_ELIGIBLE:
             alternative = self._alternative(band, exposure) if band else None
+            advisor_reasons = [
+                r for r in advisor_reasons if r != "preferential_segment_exposure"
+            ]
             if not advisor_reasons:
                 alerts.extend(analyst_reasons)
                 return build(base, alternative_product_code=alternative)
