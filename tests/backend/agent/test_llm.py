@@ -283,3 +283,20 @@ def test_pedido_de_credito_gana_al_tema_no_soportado(text):
 def test_tema_no_soportado_sobre_un_producto_sigue_redirigiendo(text, topic):
     u = classify(text)
     assert u.intent == Intent.UNSUPPORTED and u.unsupported_topic == topic
+
+
+def test_groq_toma_el_monto_del_texto_original_no_del_llm():
+    # El LLM ve "[numero]" (PII enmascarada) y además inventa un monto: se ignora.
+    client = _FakeGroqClient('{"intent": "apply_product", "amount": 5}')
+    llm = GroqLanguageModel(NO_ENV, client=client)
+    u = llm.classify("quiero un prestamo de 1000000", [])
+    assert u.amount == 1_000_000
+    assert "1000000" not in str(client.chat.completions.sent[0]["messages"])
+
+
+def test_groq_ingreso_declarado_en_usd_se_parsea_localmente():
+    client = _FakeGroqClient('{"intent": "apply_product"}')
+    llm = GroqLanguageModel(NO_ENV, client=client)
+    u = llm.classify("gano 2500 dolares al mes", [])
+    assert u.declared_monthly_income == 2500
+    assert u.amount_in_usd is True
