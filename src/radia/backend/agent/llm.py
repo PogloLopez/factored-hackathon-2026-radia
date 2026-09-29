@@ -16,6 +16,7 @@ import html
 import json
 import math
 import re
+import threading
 import unicodedata
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
@@ -84,7 +85,11 @@ class ChatMessage(BaseModel):
 
 
 class Usage(BaseModel):
-    """Consumo acumulado del LLM. El orquestador resta antes y después del turno."""
+    """Consumo del LLM: el de una llamada o una suma.
+
+    El uso de un turno sale de sumar las llamadas que registró su recolector,
+    nunca de restar el acumulador global (turnos concurrentes lo mezclarían).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -99,25 +104,31 @@ class Usage(BaseModel):
             cost_usd=self.cost_usd + other.cost_usd,
         )
 
-    def minus(self, earlier: Self) -> Self:
-        return type(self)(
-            input_tokens=self.input_tokens - earlier.input_tokens,
-            output_tokens=self.output_tokens - earlier.output_tokens,
-            cost_usd=max(self.cost_usd - earlier.cost_usd, 0.0),
-        )
-
 
 class LanguageModel(Protocol):
     model_name: str
     prompt_version: str
+    # Acumulado global del proceso. Para el trace se usa el recolector `usage`.
     usage: Usage
 
-    def classify(self, message: str, history: Sequence[ChatMessage]) -> Understanding:
-        """Entiende el mensaje. No decide nada."""
+    def classify(
+        self,
+        message: str,
+        history: Sequence[ChatMessage],
+        *,
+        usage: list[Usage] | None = None,
+    ) -> Understanding:
+        """Entiende el mensaje. No decide nada. Anota cada llamada en `usage`."""
         ...
 
-    def render(self, template_id: str, facts: Mapping[str, object]) -> str:
-        """Redacta SOLO con los hechos dados."""
+    def render(
+        self,
+        template_id: str,
+        facts: Mapping[str, object],
+        *,
+        usage: list[Usage] | None = None,
+    ) -> str:
+        """Redacta SOLO con los hechos dados. Anota cada llamada en `usage`."""
         ...
 
 
@@ -625,7 +636,13 @@ class FakeLanguageModel:
     def __init__(self) -> None:
         self.usage = Usage()
 
-    def classify(self, message: str, history: Sequence[ChatMessage]) -> Understanding:
+    def classify(
+        self,
+        message: str,
+        history: Sequence[ChatMessage],
+        *,
+        usage: list[Usage] | None = None,
+    ) -> Understanding:
         text = normalize(message)
         other = OTHER_CUSTOMER.search(message)
         product = next((code for code, rx in PRODUCTS if rx.search(text)), None)
@@ -667,7 +684,13 @@ class FakeLanguageModel:
             unsupported_topic=topic,
         )
 
-    def render(self, template_id: str, facts: Mapping[str, object]) -> str:
+    def render(
+        self,
+        template_id: str,
+        facts: Mapping[str, object],
+        *,
+        usage: list[Usage] | None = None,
+    ) -> str:
         return fill_template(template_id, facts)
 
 
@@ -800,6 +823,8 @@ class GroqLanguageModel:
         settings = settings or get_settings()
         self.model_name = settings.groq_model
         self.usage = Usage()
+        # Protege el acumulado global: varios turnos pueden llamar a la vez.
+        self._usage_lock = threading.Lock()
         self._prices = (input_usd_per_mtok, output_usd_per_mtok)
         if client is None:
             key: SecretStr | None = settings.groq_api_key
@@ -808,20 +833,37 @@ class GroqLanguageModel:
             client = Groq(api_key=key.get_secret_value())
         self._client = client
 
-    def _complete(self, messages: list[dict], *, json_mode: bool) -> str:
+    def _complete(
+        self,
+        messages: list[dict],
+        *,
+        json_mode: bool,
+        usage: list[Usage] | None,
+    ) -> str:
         kwargs: dict = {"model": self.model_name, "messages": messages}
         kwargs["temperature"] = 0
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         response = self._client.chat.completions.create(**kwargs)
-        usage = response.usage
-        if usage is not None:
-            tin, tout = usage.prompt_tokens or 0, usage.completion_tokens or 0
+        reported = response.usage
+        if reported is not None:
+            tin = reported.prompt_tokens or 0
+            tout = reported.completion_tokens or 0
             cost = (tin * self._prices[0] + tout * self._prices[1]) / 1e6
-            self.usage += Usage(input_tokens=tin, output_tokens=tout, cost_usd=cost)
+            call = Usage(input_tokens=tin, output_tokens=tout, cost_usd=cost)
+            if usage is not None:
+                usage.append(call)
+            with self._usage_lock:
+                self.usage += call
         return response.choices[0].message.content or ""
 
-    def classify(self, message: str, history: Sequence[ChatMessage]) -> Understanding:
+    def classify(
+        self,
+        message: str,
+        history: Sequence[ChatMessage],
+        *,
+        usage: list[Usage] | None = None,
+    ) -> Understanding:
         system = CLASSIFY_SYSTEM_PROMPT.format(
             intents=[i.value for i in Intent],
             products=[p.value for p in ProductCode],
@@ -837,7 +879,7 @@ class GroqLanguageModel:
             {"role": "user", "content": content},
         ]
         try:
-            raw = json.loads(self._complete(messages, json_mode=True))
+            raw = json.loads(self._complete(messages, json_mode=True, usage=usage))
         except (GroqError, ValueError, AttributeError, IndexError):
             # Salida ilegible: se pide aclaración, nunca se adivina.
             return Understanding(intent=Intent.AMBIGUOUS)
@@ -851,7 +893,13 @@ class GroqLanguageModel:
             }
         )
 
-    def render(self, template_id: str, facts: Mapping[str, object]) -> str:
+    def render(
+        self,
+        template_id: str,
+        facts: Mapping[str, object],
+        *,
+        usage: list[Usage] | None = None,
+    ) -> str:
         draft = fill_template(template_id, facts)
         if template_id in VERBATIM_TEMPLATES:
             # Confirmación, acción o handoff: el texto es el de la plantilla.
@@ -865,7 +913,7 @@ class GroqLanguageModel:
             {"role": "user", "content": draft},
         ]
         try:
-            text = self._complete(messages, json_mode=False).strip()
+            text = self._complete(messages, json_mode=False, usage=usage).strip()
         except (GroqError, AttributeError, IndexError):
             # Redactar nunca tumba el turno: queda el borrador de la plantilla.
             return draft
