@@ -20,7 +20,9 @@ Aprobación humana no obligatoria mientras se trabaje en solitario. Se mergea co
 3. CI en verde (ruff y pytest).
 4. `/code-review` sobre el PR completo, con los hallazgos corregidos o respondidos en el PR.
 
-Si vuelve el equipo, se exige de nuevo 1 aprobación humana.
+Las compuertas 1, 2 y 4 las dispara el mismo agente que escribe el código, así que no son independientes. La garantía dura es externa: el hook bloquea commit, merge y push directos a `main`/`develop`, y la protección de rama en GitHub exige CI en verde para mergear.
+
+Si vuelve el equipo, se exige de nuevo 1 aprobación humana, y los PR que tocan `src/radia/contracts/` vuelven a necesitar al productor y al consumidor.
 
 ## Checkpoints humanos
 
