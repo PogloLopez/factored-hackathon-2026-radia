@@ -10,6 +10,7 @@ Supuestos a verificar con los datos reales (ver README):
 - `customers` y `products` son la foto más reciente, no una historia: sus
   atributos (segmento, saldo, mora) no se pueden reconstruir a una fecha pasada.
 - Los ingresos del cliente son depósitos aprobados (`Deposit` + `Approved`).
+  Sin `amount_usd` se convierte `amount` con la tasa de su moneda al corte.
 """
 
 import logging
@@ -137,6 +138,42 @@ def _create_credit_products(con: duckdb.DuckDBPyConnection, snapshot: date) -> N
         log.warning("%d productos de crédito sin tasa a USD al corte", missing)
 
 
+def _create_deposits(con: duckdb.DuckDBPyConnection, snapshot: date) -> None:
+    """Tabla `deposit_amounts`: depósitos aprobados de la ventana, en USD.
+
+    Si `amount_usd` es nulo (el diccionario lo permite), se usa `amount` con la
+    tasa de la moneda de la transacción al corte, la misma de los productos.
+    Si tampoco hay tasa, el monto queda nulo, se descarta y se avisa en el log.
+    Mes 0 = (corte - 1 mes, corte]; mes 5 = el más viejo de la ventana.
+    """
+    snap = sql_literal(snapshot.isoformat())
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE deposit_amounts AS
+        SELECT t.customer_id,
+               date_sub('month', CAST(t.transaction_date AS DATE), DATE {snap})
+                   AS month_back,
+               COALESCE(CAST(t.amount_usd AS DOUBLE),
+                        CAST(t.amount AS DOUBLE) * fx.to_usd) AS amount_usd
+        FROM transactions t
+        LEFT JOIN fx ON fx.currency = t.currency
+        WHERE t.transaction_type = 'Deposit'
+          AND t.transaction_status = 'Approved'
+          AND CAST(t.transaction_date AS DATE) <= DATE {snap}
+          AND date_sub('month', CAST(t.transaction_date AS DATE), DATE {snap})
+              < {INFLOW_MONTHS}
+        """
+    )
+    missing = con.execute(
+        "SELECT COUNT(*) FROM deposit_amounts WHERE amount_usd IS NULL"
+    ).fetchone()[0]
+    if missing:
+        log.warning(
+            "%d depósitos sin amount_usd ni tasa a USD al corte: se descartan",
+            missing,
+        )
+
+
 def _features_sql(snapshot: date) -> str:
     snap = sql_literal(snapshot.isoformat())
     currency_case = " ".join(
@@ -187,16 +224,10 @@ def _features_sql(snapshot: date) -> str:
         GROUP BY customer_id
     ),
     deposits AS (
-        -- Mes 0 = (corte - 1 mes, corte]; mes 5 = el más viejo de la ventana.
-        SELECT customer_id,
-               date_sub('month', CAST(transaction_date AS DATE), DATE {snap})
-                   AS month_back,
-               CAST(amount_usd AS DOUBLE) AS amount_usd
-        FROM transactions
-        WHERE transaction_type = 'Deposit'
-          AND transaction_status = 'Approved'
-          AND amount_usd > 0
-          AND CAST(transaction_date AS DATE) <= DATE {snap}
+        -- Sin monto en USD (ni respaldo) no se puede sumar: se avisa en el log.
+        SELECT customer_id, month_back, amount_usd
+        FROM deposit_amounts
+        WHERE amount_usd > 0
     ),
     monthly AS (
         -- Meses sin depósitos cuentan como 0 para el promedio y la variación.
@@ -263,6 +294,7 @@ def build_features(
     snapshot = _resolve_snapshot(con, snapshot_date)
     _create_fx(con, snapshot)
     _create_credit_products(con, snapshot)
+    _create_deposits(con, snapshot)
     df = con.execute(_features_sql(snapshot)).df()
     total = con.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
     if total - len(df):
