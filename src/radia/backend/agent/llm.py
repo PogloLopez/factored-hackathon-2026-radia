@@ -7,8 +7,9 @@
   gasto, para tests y demo.
 - `GroqLanguageModel`: SDK oficial `groq`. La salida JSON se valida con
   pydantic. Nunca se instancia en tests (el gasto es checkpoint de Pablo).
-- Las plantillas son la fuente de los textos. El LLM real solo las reescribe y
-  un guardia descarta la reescritura si trae números que no estaban.
+- Las plantillas son la fuente de los textos. Las de confirmación, acción o
+  handoff salen tal cual. Las demás el LLM real puede reescribirlas; un guardia
+  descarta la reescritura si agrega números o palabras de aprobación o registro.
 """
 
 import html
@@ -641,6 +642,29 @@ def _numbers(text: str) -> set[str]:
     return {re.sub(r"[.,]", "", n) for n in _NUMBER.findall(text)}
 
 
+# Plantillas de confirmación, acción o handoff: el LLM nunca las reescribe.
+VERBATIM_TEMPLATES = frozenset(
+    {
+        "confirm_request",
+        "nothing_pending",
+        "application_created",
+        "application_cancelled",
+        "handoff_analyst",
+        "handoff_advisor",
+        "fallback_handoff",
+        "income_noted",
+        "in_handoff",
+    }
+)
+# Palabras de aprobación o registro (es, pt, en) que el LLM no puede agregar.
+# Al inicio de palabra: "preaprobado" es un hecho de la oferta, no cuenta.
+_APPROVAL = re.compile(r"\b(?:aprobad|registrad|aprovad|approved|registered)")
+
+
+def _approval_words(text: str) -> int:
+    return len(_APPROVAL.findall(normalize(text)))
+
+
 class GroqLanguageModel:
     """LLM real vía el SDK oficial de Groq. Nunca se instancia en tests.
 
@@ -705,6 +729,9 @@ class GroqLanguageModel:
 
     def render(self, template_id: str, facts: Mapping[str, object]) -> str:
         draft = fill_template(template_id, facts)
+        if template_id in VERBATIM_TEMPLATES:
+            # Confirmación, acción o handoff: el texto es el de la plantilla.
+            return draft
         language = str(facts.get("language", Language.ES))
         messages = [
             {
@@ -718,7 +745,9 @@ class GroqLanguageModel:
         except (GroqError, AttributeError, IndexError):
             # Redactar nunca tumba el turno: queda el borrador de la plantilla.
             return draft
-        # Guardia: si la reescritura trae números nuevos, se usa el borrador.
+        # Guardia: números o palabras de aprobación nuevas, se usa el borrador.
         if not text or not _numbers(text) <= _numbers(draft):
+            return draft
+        if _approval_words(text) > _approval_words(draft):
             return draft
         return text
