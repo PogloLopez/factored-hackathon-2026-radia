@@ -52,6 +52,7 @@ from radia.backend.agent.session import (
 )
 from radia.backend.agent.tools import (
     Application,
+    ApplicationExists,
     Offer,
     ToolBox,
     ToolDenied,
@@ -498,6 +499,18 @@ class Orchestrator:
         try:
             application = self.tools.create_application(
                 session, offer.offer_id, confirmation_id, calls=turn.calls
+            )
+        except ApplicationExists as exc:
+            # La búsqueda previa pudo caer: la tool igual frena el duplicado.
+            # No es una falla, se informa la existente y no hay handoff.
+            session.pending = None
+            session.move_to(SessionState.IDLE)
+            return self._say(
+                session,
+                turn,
+                "application_exists",
+                product=product_name(product, session.language),
+                reference=exc.reference,
             )
         except (ToolFailed, ToolDenied):
             return self._fallback_handoff(
