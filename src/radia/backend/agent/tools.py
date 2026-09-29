@@ -293,7 +293,8 @@ class ToolBox:
             raise
         except Exception as exc:
             # Cualquier falla técnica (reintentable o no) termina en fallback.
-            error = f"{type(exc).__name__}: {exc}"[:200]
+            # Solo el tipo: el mensaje puede traer datos del cliente.
+            error = type(exc).__name__
             self._record(name, start, ok=False, error=error, attempt=attempts)
             raise ToolFailed(name) from exc
         self._record(name, start, ok=True, attempt=attempts)
