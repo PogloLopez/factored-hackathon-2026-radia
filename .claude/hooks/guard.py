@@ -88,30 +88,50 @@ def ruff_autofix(all_tracked: bool) -> None:
             )
 
 
+# Separadores de comandos en Bash y PowerShell: && || | & ; saltos de línea,
+# bloques { } y subexpresiones ( ).
+CMD_SEPARATORS = re.compile(r"&&|\|\||[|&;\n\r{}()]")
+# Continuación de línea: `\` en Bash y backtick en PowerShell.
+LINE_CONTINUATION = re.compile(r"[\\`]\r?\n")
+# git o git.exe (con o sin comillas), opciones globales y el subcomando.
+GIT_CMD = re.compile(
+    r"""^["']?git(?:\.exe)?["']?"""
+    r"""((?:\s+(?:-[Cc]\s+\S+|--?[\w-]+(?:=\S+)?))*)"""
+    r"""\s+(push|merge|commit)\b(.*)$""",
+    re.IGNORECASE,
+)
+
+
+def git_subcommands(cmd: str) -> list[tuple[str, str]]:
+    """Devuelve (subcomando, argumentos) de cada git push/merge/commit del comando."""
+    cmd = LINE_CONTINUATION.sub(" ", cmd)
+    found = []
+    for part in CMD_SEPARATORS.split(cmd):
+        match = GIT_CMD.match(part.strip().lstrip("$ "))
+        if match:
+            found.append((match.group(2).lower(), match.group(3)))
+    return found
+
+
 def check_bash(cmd: str) -> None:
     if ENV_IN_TEXT.search(cmd):
         block("el comando toca .env. Los secretos no se leen ni se imprimen.")
-    if "docs/pdf" in cmd:
+    if re.search(r"docs[\\/]+pdf", cmd, re.IGNORECASE):
         block("docs/pdf contiene credenciales.")
 
     branch = current_branch()
-    for part in re.split(r"&&|\|\||;|\n", cmd):
-        part = part.strip()
-        if not part.startswith("git "):
-            continue
-        if re.match(r"git\s+push\b", part):
-            targets = set(re.findall(r"[\w./-]+", part)) & PROTECTED
-            refspecs = {
-                t.split(":")[-1] for t in re.findall(r"\S+:\S+", part)
-            } & PROTECTED
-            if targets or refspecs or (branch in PROTECTED and len(part.split()) <= 3):
+    for sub, args in git_subcommands(cmd):
+        if sub == "push":
+            targets = set(re.findall(r"[\w./-]+", args)) & PROTECTED
+            positional = [a for a in args.split() if not a.startswith("-")]
+            if targets or (branch in PROTECTED and len(positional) <= 1):
                 block("push directo a main/develop. Abre un PR desde tu rama.")
-        if re.match(r"git\s+merge\b", part) and branch in PROTECTED:
+        if sub == "merge" and branch in PROTECTED:
             block(f"merge directo sobre {branch}. Se integra por PR.")
-        if re.match(r"git\s+commit\b", part):
+        if sub == "commit":
             if branch in PROTECTED:
                 block(f"commit directo sobre {branch}. Crea una rama feat/... primero.")
-            ruff_autofix(all_tracked=bool(re.search(r"\s(-a|--all|-\w*a\w*)\b", part)))
+            ruff_autofix(all_tracked=bool(re.search(r"\s(-a|--all|-\w*a\w*)\b", args)))
 
 
 def main() -> None:
