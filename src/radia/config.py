@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # LLM del orquestador. Sin llave se usa el modelo falso (sin gasto).
     groq_api_key: SecretStr | None = None
     groq_model: str = "llama-3.3-70b-versatile"
+    # La API usa Groq solo si esto es verdadero. Por defecto, el modelo falso:
+    # el gasto en LLM es checkpoint de Pablo.
+    use_groq: bool = False
 
     @property
     def raw_dir(self) -> Path:
