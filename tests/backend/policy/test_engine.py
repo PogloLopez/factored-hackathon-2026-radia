@@ -431,3 +431,22 @@ def test_no_automatic_without_score_or_limit():
     ]
     for inp in cases:
         assert POLICY.decide(inp).attention_level != L.AUTOMATIC
+
+
+def test_preferencial_no_rescata_un_no_elegible():
+    # Banda baja con exposición media: la matriz dice no elegible.
+    d = decide(score=400, segment="Premium", product=ProductCode.CC_GOLD)
+    assert d.attention_level == L.NOT_ELIGIBLE
+    assert d.preferential is True
+    assert d.offered_limit_usd is None
+
+
+def test_preferencial_con_disputa_si_va_al_asesor():
+    d = decide(
+        score=400,
+        segment="Premium",
+        product=ProductCode.CC_GOLD,
+        request={"customer_disputes_rejection": True},
+    )
+    assert d.attention_level == L.ADVISOR
+    assert "preferential_segment_exposure" not in d.reasons
