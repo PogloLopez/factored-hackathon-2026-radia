@@ -161,14 +161,31 @@ def test_both_exclusions_listed():
     assert d.reasons[:2] == ["customer_status_suspended", "days_past_due_above_limit"]
 
 
-def test_exclusion_is_final_even_with_dispute():
+def test_exclusion_with_human_request_goes_to_advisor_without_limit():
     d = decide(
         customer_status="Closed",
         request={"customer_disputes_rejection": True, "customer_requests_human": True},
     )
+    assert d.attention_level == L.ADVISOR
+    assert "customer_requests_human" in d.reasons
+    assert d.offered_limit_usd is None
+    assert d.alternative_product_code is None
+
+
+def test_exclusion_preferential_alone_stays_not_eligible():
+    d = decide(customer_status="Suspended", segment="Premium")
     assert d.attention_level == L.NOT_ELIGIBLE
-    assert "customer_disputes_rejection" in d.alerts
-    assert "customer_requests_human" in d.alerts
+
+
+def test_alternative_is_never_the_requested_product():
+    # Banda baja pide CC_BASIC por encima del tope: la exposición sube a media.
+    d = decide(
+        score=400,
+        product=ProductCode.CC_BASIC,
+        request={"requested_amount_usd": 600.0},
+    )
+    assert d.attention_level == L.NOT_ELIGIBLE
+    assert d.alternative_product_code != ProductCode.CC_BASIC
 
 
 def test_exclusion_without_score():
