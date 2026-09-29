@@ -38,4 +38,71 @@ Orden de las reglas:
 
 Números provisionales: todos los del YAML son checkpoint de Pablo, sin aprobar. Ver [[propuesta]], sección 4.
 
+## Orquestador de conversación
+
+`agent/`: máquina de estados por sesión. Casos que demuestra: [[propuesta]], sección 6.
+
+| Archivo | Qué hace |
+| --- | --- |
+| `llm.py` | `LanguageModel`: `classify` (entiende) y `render` (redacta con hechos dados). `FakeLanguageModel` por reglas (es, pt) y `GroqLanguageModel` |
+| `session.py` | Sesión y estados: idle → awaiting_confirmation → done / handoff |
+| `tools.py` | Tools con permisos, reintentos acotados y fuentes inyectables |
+| `orchestrator.py` | `start_session`, `handle_message`, `confirm` |
+| `tracing.py` | Sinks del `TurnTrace` (C11): en memoria y JSONL |
+
+```python
+from radia.backend.agent.llm import FakeLanguageModel
+from radia.backend.agent.orchestrator import Orchestrator
+from radia.backend.agent.tools import InMemoryOfferRepository, ToolBox
+from radia.backend.agent.tracing import JsonlTraceSink
+from radia.config import get_settings
+
+tools = ToolBox(InMemoryOfferRepository(active_offers_df))  # C6
+orch = Orchestrator(
+    FakeLanguageModel(), tools, JsonlTraceSink.from_settings(get_settings())
+)
+session = orch.start_session("DEMO000001")  # el id sale del login
+reply = orch.handle_message(session.session_id, "Quiero una tarjeta básica")
+orch.confirm(
+    session.session_id, reply.pending_confirmation.confirmation_id, accept=True
+)
+```
+
+Flujo:
+
+```mermaid
+flowchart LR
+  M["Mensaje"] --> C["LLM classify"] --> G{"Guardas"}
+  G -->|inyección u otro cliente| R["Rechazo"]
+  G --> O["Oferta vigente C6"]
+  O -->|automatic| P["Pide confirmación"] --> K["confirm"] --> A["create_application"] --> V["Verifica"] --> D["done"]
+  O -->|analyst / advisor| H["Handoff C9"]
+  O -->|not_eligible| E["Razones y alternativa"]
+  O -->|vencida o caída| F["Fallback seguro"]
+```
+
+- La decisión sale siempre de C6 (política C7). El LLM nunca decide ni calcula montos.
+- Ambiguo: pide aclaración. No soportado: indica el canal.
+- Ingreso declarado en el chat: pregunta abierta para el analista. La decisión adjunta no cambia.
+- Pedir humano o disputar: handoff al asesor.
+
+Permisos (en `tools.py`, fuera del LLM):
+
+- Toda tool recibe la sesión. Otro `customer_id` se deniega (`customer_mismatch`). Sesión vencida también.
+- `create_application` exige confirmación aceptada, oferta propia, vigente y automática.
+- Idempotente por `confirmation_id`: un reintento no duplica la solicitud.
+
+Fallback:
+
+- Reintentos acotados con tenacity (3 intentos) solo en fallas técnicas. Una denegación no se reintenta.
+- Ofertas vencidas o fuente caída: nunca se inventa una oferta. En consultas, se pide reintentar. En acciones, handoff al analista con preguntas abiertas.
+- Solicitud no verificada: no se reporta. Handoff con la acción intentada.
+
+Tracing:
+
+- Cada turno (mensaje o confirmación) escribe un `TurnTrace` (C11): intent, tools, comportamientos, nivel, reglas, fuentes, versiones, tokens, costo y latencia.
+- Sin texto del cliente. JSONL en `data_dir/traces/`, un archivo por día.
+
+LLM real: `GroqLanguageModel` lee `GROQ_API_KEY` del archivo de entorno (ver `.env.example`). Usarlo es gasto: checkpoint de Pablo. Tests y demo usan `FakeLanguageModel`.
+
 Detalle en [[propuesta]] y [[trabajo_en_paralelo]].
