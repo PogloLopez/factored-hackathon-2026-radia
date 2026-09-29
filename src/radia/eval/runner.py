@@ -217,8 +217,7 @@ class EvalRunner:
         """Verdad de terreno: ofertas del cliente y si el sistema podía leerlas."""
         if customer_id is None:
             return []
-        source = self._expired if failure == InjectedFailure.OFFERS_EXPIRED else None
-        offers = (source or self._fresh).offers_for(customer_id)
+        offers = self.offer_rows(customer_id, failure)
         readable = failure not in UNREADABLE
         return [
             OfferFact(
@@ -231,8 +230,12 @@ class EvalRunner:
             for o in offers
         ]
 
-    def offer_rows(self, customer_id: str) -> list[Offer]:
-        """Filas C6 del cliente sin filtrar vigencia (para el baseline)."""
+    def offer_rows(
+        self, customer_id: str, failure: InjectedFailure | None = None
+    ) -> list[Offer]:
+        """Filas C6 del cliente sin filtrar vigencia ni permisos (baseline)."""
+        if failure == InjectedFailure.OFFERS_EXPIRED:
+            return self._expired.offers_for(customer_id)
         return self._fresh.offers_for(customer_id)
 
     def _harness(self, failure: InjectedFailure | None) -> _Harness:
