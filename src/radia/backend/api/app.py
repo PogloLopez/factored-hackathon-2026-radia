@@ -4,7 +4,8 @@ La app que levanta uvicorn está en `main.py`. Los tests usan `create_app`.
 
 - La identidad sale del token (`Authorization: Bearer ...`), nunca del cuerpo.
 - Chat y confirmación pasan por el orquestador: la decisión sale de C6.
-- Una sesión de chat es del cliente que la abrió. Otro cliente recibe 403.
+- Una sesión de chat es del cliente que la abrió. Otro cliente recibe 404,
+  igual que una sesión inexistente.
 - El monto del asesor debe caer en el rango de negociación del caso.
 - Aprobar un caso `analyst_and_advisor` abre el caso de asesor de seguimiento.
 """
