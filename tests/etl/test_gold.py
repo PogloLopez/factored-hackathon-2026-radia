@@ -202,3 +202,15 @@ def test_deposito_sin_amount_usd_usa_amount_con_la_tasa(silver_settings, caplog)
         (600 * 6 + 600) / 6
     )
     assert "1 depósitos sin amount_usd ni tasa" in caplog.text
+
+
+def test_etiquetas_de_cupo_excluyen_productos_no_activos(silver_settings):
+    # Suspendido con cupo positivo: no es cupo vigente, igual que en C1.
+    _add_products(
+        silver_settings,
+        "('P9', 'C2', 'Credit Card', 'USD', 0.00, 3000.00, 'Suspended'),"
+        " ('P10', 'C2', 'Personal Loan', 'USD', 0.00, 8000.00, 'Active')",
+    )
+    df = build_limit_labels(silver_settings, SNAPSHOT)
+    assert set(df["product_id"]) == {"P1", "P2", "P10"}
+    assert not {"P3", "P6", "P9"} & set(df["product_id"])
