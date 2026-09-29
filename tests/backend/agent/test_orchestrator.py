@@ -588,3 +588,12 @@ def test_monto_convertido_bajo_un_dolar_pide_aclaracion(orch, sink):
     )
     assert reply.pending_confirmation is None
     assert last_trace(sink).outcome == Outcome.CLARIFICATION
+
+
+def test_tema_no_soportado_con_ingreso_sigue_su_redireccion(orch, sink):
+    _, [reply] = chat(orch, "C1", "Perdí mi tarjeta, gano 8000 al mes")
+    assert reply.handoff_case_id is None
+    trace = last_trace(sink)
+    assert trace.outcome == Outcome.REDIRECTED
+    assert "declared_income_unverified" not in trace.rule_ids
+    assert orch.tools.cases.cases == {}
