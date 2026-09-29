@@ -1,8 +1,19 @@
 """C2. Etiquetas Gold para los modelos, separadas de las features (C1).
 
 Productor: ETL. Consumidor: modelos.
-- Cupo asignado por producto de crédito existente (modelo de cupo, C4).
-- Mora mayor a 30 días después de la fecha de corte de las features (riesgo, C5).
+
+Cupo (modelo de cupo, C4):
+- Una fila por producto de crédito existente. `snapshot_date` es la misma de C1.
+- Convertido a USD desde `products.currency` con `daily_exchange_rates`.
+- Productos con `credit_limit` nulo o 0 se descartan.
+- Hay varias filas por cliente: el split train/test va por `customer_id`.
+
+Mora (modelo de riesgo, C5):
+- Universo: clientes con crédito y sin mora mayor a 30 días al corte. Los que ya
+  están en mora los corta la política y, si entraran, la etiqueta se filtraría
+  por `max_days_past_due` de C1.
+- `days_past_due` nulo en un producto de crédito cuenta como 0.
+- La etiqueta se mira después de la fecha de corte de las features.
 """
 
 import numpy as np
@@ -49,7 +60,10 @@ class GoldDelinquencyLabels(pa.DataFrameModel):
 def make_limit_labels(features: pd.DataFrame, seed: int = 0) -> pd.DataFrame:
     """Mock de C2 (cupos) a partir de features C1. Solo para construir código."""
     rng = np.random.default_rng(seed)
-    owners = features[features["n_credit_products"] > 0]
+    # Una fila por producto de crédito del cliente.
+    owners = features.loc[
+        features.index.repeat(features["n_credit_products"].clip(lower=0))
+    ]
     df = pd.DataFrame(
         {
             "product_id": [f"MOCKP{i:07d}" for i in range(len(owners))],
@@ -69,13 +83,16 @@ def make_delinquency_labels(
 ) -> pd.DataFrame:
     """Mock de C2 (mora) a partir de features C1. Solo para construir código."""
     rng = np.random.default_rng(seed)
-    cutoff = features["snapshot_date"]
+    universe = features[
+        (features["n_credit_products"] > 0) & (features["max_days_past_due"] <= 30)
+    ]
+    cutoff = universe["snapshot_date"]
     df = pd.DataFrame(
         {
-            "customer_id": features["customer_id"].to_numpy(),
+            "customer_id": universe["customer_id"].to_numpy(),
             "feature_cutoff_date": cutoff.to_numpy(),
             "label_date": (cutoff + pd.Timedelta(days=horizon_days)).to_numpy(),
-            "delinquent_30p": rng.random(len(features)) < 0.08,
+            "delinquent_30p": rng.random(len(universe)) < 0.08,
         }
     )
     return validate(GoldDelinquencyLabels, df)
