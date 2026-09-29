@@ -125,8 +125,10 @@ REDIRECTION = re.compile(r"\d*>>?\s*\S*|<\s*\S*")
 # git o git.exe, con ruta opcional y con o sin comillas, opciones globales
 # (con valor tras espacio o "=", entre comillas o no) y el subcomando.
 # Análisis textual de mejor esfuerzo. Límites conocidos: opciones de push con
-# valor separado cuentan como posicionales, y prefijos como `FOO=1 git` o
-# `env git` no se detectan. La garantía dura es la protección de rama en GitHub.
+# valor separado cuentan como posicionales, prefijos como `FOO=1 git` o
+# `env git` no se detectan, un apóstrofe suelto (`it's`) puede emparejarse con
+# otra comilla de la misma línea y ocultar un comando, y `git add -u` sin rutas
+# no se formatea. La garantía dura es la protección de rama en GitHub.
 _VALUE = r"""(?:"[^"]*"|'[^']*'|\S+)"""
 _GIT_BIN = (
     r"""(?:"(?:[^"]*[\\/])?git(?:\.exe)?"|'(?:[^']*[\\/])?git(?:\.exe)?'"""
