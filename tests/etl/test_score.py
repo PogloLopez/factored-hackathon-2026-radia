@@ -190,3 +190,14 @@ def test_build_score_lee_c1_y_escribe_c3(features):
         validate(InternalScore, stored)
         assert stored["score"].isna().sum() == scores["score"].isna().sum()
         assert len(stored) == len(features)
+
+
+def test_deuda_discrimina_con_hipotecas_y_prestamos(weights):
+    # Un crédito típico pesa varios meses de ingreso: no debe tomar ya la
+    # penalización máxima, y más deuda debe restar más.
+    debt = weights.components["debt_to_income"]
+    pts = debt.points(pd.Series([0.0, 1.5, 6.0, 24.0, 36.0, 100.0]))
+    assert pts[0] == debt.points_low
+    assert pts[1] > pts[2] > pts[3] > pts[4]
+    assert pts[1] > debt.points_high
+    assert pts[4] == pts[5] == debt.points_high
