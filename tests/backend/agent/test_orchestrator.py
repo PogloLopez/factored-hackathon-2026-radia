@@ -597,3 +597,14 @@ def test_tema_no_soportado_con_ingreso_sigue_su_redireccion(orch, sink):
     assert trace.outcome == Outcome.REDIRECTED
     assert "declared_income_unverified" not in trace.rule_ids
     assert orch.tools.cases.cases == {}
+
+
+def test_segundo_pedido_de_la_misma_oferta_no_crea_duplicado(orch, sink):
+    session, [reply] = chat(orch, "C1", "Quiero una tarjeta básica")
+    sid = session.session_id
+    done = orch.confirm(sid, reply.pending_confirmation.confirmation_id, True)
+    again = orch.handle_message(sid, "Quiero una tarjeta básica")
+    assert again.pending_confirmation is None
+    assert done.application_reference in again.reply
+    assert len(orch.tools.applications.applications) == 1
+    assert last_trace(sink).application_reference is None
