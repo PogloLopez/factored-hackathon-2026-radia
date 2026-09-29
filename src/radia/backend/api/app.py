@@ -8,15 +8,19 @@ La app que levanta uvicorn está en `main.py`. Los tests usan `create_app`.
   igual que una sesión inexistente.
 - El monto del asesor debe caer en el rango de negociación del caso.
 - Aprobar un caso `analyst_and_advisor` abre el caso de asesor de seguimiento.
+- Si existe `frontend/`, la web estática se sirve en `/web` y `/` da el login.
 """
 
 import uuid
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 
 from radia.backend.agent.llm import LanguageModel
 from radia.backend.agent.orchestrator import ChatReply, UnknownSession
@@ -59,6 +63,10 @@ DECISION_STATUS = {
     AnalystDecision.REQUEST_INFO: CaseStatus.INFO_REQUESTED,
 }
 OPEN_STATUSES = {CaseStatus.PENDING, CaseStatus.INFO_REQUESTED}
+
+# Web estática en la raíz del repo: src/radia/backend/api/app.py -> parents[4].
+FRONTEND_DIR = Path(__file__).resolve().parents[4] / "frontend"
+LOGIN_PAGE = "index.html"
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -203,8 +211,12 @@ def create_app(
     sink: TraceSink | None = None,
     llm: LanguageModel | None = None,
     clock: Callable[[], datetime] = utc_now,
+    frontend_dir: Path | None = FRONTEND_DIR,
 ) -> FastAPI:
-    """Arma la app. Los tests inyectan sink, LLM, reloj o el estado entero."""
+    """Arma la app. Los tests inyectan sink, LLM, reloj, estado o la web.
+
+    `frontend_dir=None` (o una carpeta sin `index.html`) deja solo la API.
+    """
     settings = settings or get_settings()
     app = FastAPI(
         title="Radia API",
@@ -350,4 +362,21 @@ def create_app(
             state.advisor_messages.setdefault(case_id, []).append(message)
         return message
 
+    _mount_frontend(app, frontend_dir)
     return app
+
+
+def _mount_frontend(app: FastAPI, frontend_dir: Path | None) -> None:
+    """Sirve la web estática en `/web` y el login en `/`.
+
+    Va después de los endpoints: la API no cambia. Sin carpeta, no monta nada.
+    """
+    if frontend_dir is None or not (frontend_dir / LOGIN_PAGE).is_file():
+        return
+    login_page = frontend_dir / LOGIN_PAGE
+
+    @app.get("/", include_in_schema=False)
+    def root() -> FileResponse:
+        return FileResponse(login_page, media_type="text/html")
+
+    app.mount("/web", StaticFiles(directory=frontend_dir, html=True), name="web")
