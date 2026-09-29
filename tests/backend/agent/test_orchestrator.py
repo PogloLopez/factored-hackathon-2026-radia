@@ -15,6 +15,7 @@ from radia.backend.agent.orchestrator import Orchestrator, UnknownSession
 from radia.backend.agent.session import Currency, SessionState
 from radia.backend.agent.tools import (
     InMemoryApplicationStore,
+    InMemoryCaseStore,
     InMemoryOfferRepository,
     ToolBox,
     TransientToolError,
@@ -451,3 +452,37 @@ def test_automatica_sin_cupo_va_al_fallback(tools, sink, offers_df):
     trace = last_trace(sink)
     assert Behavior.SAFE_FALLBACK in trace.behaviors
     assert "offer_without_limit" in trace.rule_ids
+
+
+# --- Turnos concurrentes no mezclan trazas --------------------------------------
+
+
+class InterleavingCaseStore(InMemoryCaseStore):
+    """Al guardar un caso corre el turno de otra sesión, como en paralelo."""
+
+    other_turn = None
+
+    def save(self, case):
+        if self.other_turn is not None:
+            turn, self.other_turn = self.other_turn, None
+            turn()
+        return super().save(case)
+
+
+def test_turnos_concurrentes_no_mezclan_tools(tools, sink, offers_df):
+    cases = InterleavingCaseStore()
+    box = ToolBox(
+        InMemoryOfferRepository(offers_df),
+        cases=cases,
+        clock=tools.clock,
+        wait=wait_none(),
+    )
+    orch = Orchestrator(FakeLanguageModel(), box, sink, clock=tools.clock)
+    first, second = orch.start_session("C1"), orch.start_session("C2")
+    cases.other_turn = lambda: orch.handle_message(
+        second.session_id, "¿Tengo algún preaprobado?"
+    )
+    orch.handle_message(first.session_id, "Quiero un préstamo personal")
+    by_session = {t.session_id: [c.name for c in t.tools] for t in sink.traces}
+    assert by_session[second.session_id] == ["get_active_offers"]
+    assert by_session[first.session_id] == ["get_active_offers", "create_handoff"]
