@@ -175,6 +175,7 @@ def test_exclusion_with_human_request_goes_to_advisor_without_limit():
 def test_exclusion_preferential_alone_stays_not_eligible():
     d = decide(customer_status="Suspended", segment="Premium")
     assert d.attention_level == L.NOT_ELIGIBLE
+    assert "preferential_segment_exposure" in d.alerts
 
 
 def test_alternative_is_never_the_requested_product():
