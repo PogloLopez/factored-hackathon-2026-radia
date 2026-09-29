@@ -115,3 +115,55 @@ def test_falta_silver(silver_settings):
     silver_path(silver_settings, "transactions").unlink()
     with pytest.raises(FileNotFoundError, match="transactions"):
         build_features(silver_settings, SNAPSHOT)
+
+
+def _add_products(settings, values: str) -> None:
+    """Agrega productos de C1 al Silver de products (el resto de columnas NULL)."""
+    path = silver_path(settings, "products")
+    con = duckdb.connect()
+    con.execute(
+        f"""
+        COPY (
+            SELECT * FROM read_parquet({sql_literal(path)})
+            UNION ALL BY NAME
+            SELECT * FROM (VALUES {values})
+                t(product_id, customer_id, product_type, currency,
+                  current_balance, credit_limit, product_status)
+        ) TO {sql_literal(path.with_suffix(".new"))} (FORMAT parquet)
+        """
+    )
+    con.close()
+    path.with_suffix(".new").replace(path)
+
+
+def test_utilizacion_ignora_tarjetas_sin_cupo(silver_settings):
+    # Tarjeta activa con cupo 0 y saldo alto: no debe inflar la utilización.
+    _add_products(
+        silver_settings, "('P7', 'C1', 'Credit Card', 'MXN', 30000.00, 0.00, 'Active')"
+    )
+    c1 = build_features(silver_settings, SNAPSHOT).set_index("customer_id").loc["C1"]
+    assert c1["credit_utilization"] == pytest.approx(0.25)
+    # El saldo total de crédito sí incluye la tarjeta sin cupo (30000 * 0.06).
+    assert c1["total_credit_balance_usd"] == pytest.approx(1600.0 + 1800.0)
+    assert c1["n_credit_products"] == 3
+
+
+def test_sin_tasa_de_cambio_los_ratios_quedan_nulos(silver_settings):
+    # CLP no tiene tasa a USD: el saldo total sería parcial.
+    _add_products(
+        silver_settings,
+        "('P8', 'C1', 'Personal Loan', 'CLP', 500000.00, 900000.00, 'Active')",
+    )
+    df = build_features(silver_settings, SNAPSHOT)
+    c1 = df.set_index("customer_id").loc["C1"]
+    assert pd.isna(c1["debt_to_income"])
+    assert pd.isna(c1["credit_utilization"])
+    # Los demás clientes no se ven afectados.
+    c3 = df.set_index("customer_id").loc["C3"]
+    assert c3["total_credit_balance_usd"] == pytest.approx(500.0)
+    # La salida sigue cumpliendo C1.
+    stored = duckdb.sql(
+        f"SELECT * FROM read_parquet({sql_literal(gold_path(silver_settings, 'customer_features'))})"
+    ).df()
+    stored["credit_score"] = stored["credit_score"].astype("Int64")
+    validate(GoldCustomerFeatures, stored)
