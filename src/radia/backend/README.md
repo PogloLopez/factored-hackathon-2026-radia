@@ -7,7 +7,7 @@ API, orquestador (máquina de estados con LLM), servicio de política sintética
 ## Primeras entregas
 
 - Reglas v0 de la política (borrador en [[trabajo_en_paralelo]], momento 3).
-- Stub de la API con respuestas fijas, para que el frontend avance desde el D1 (endpoints en [[trabajo_en_paralelo]], momento 4).
+- API HTTP real sobre el orquestador (ver abajo). Endpoints en [[trabajo_en_paralelo]], momento 4.
 
 ## Reglas
 
@@ -134,5 +134,45 @@ Guardas del LLM real:
 
 - `classify`: emails, teléfonos y secuencias de 6 o más dígitos salen enmascarados. Historial y mensaje van como datos, nunca como instrucciones. Un campo inválido se degrada solo; la sospecha de inyección se conserva.
 - `render`: las plantillas de confirmación, acción y handoff salen tal cual. En las demás, se descarta la reescritura si agrega números o palabras de aprobación o registro.
+
+## API HTTP (C8)
+
+`api/`: app FastAPI sobre el orquestador. Contrato en `radia.contracts.api`. Endpoints de [[trabajo_en_paralelo]], momento 4.
+
+```bash
+uv run uvicorn radia.backend.api.main:app --reload --port 8000
+# Documentación interactiva: http://localhost:8000/docs
+```
+
+| Endpoint | Rol | Qué hace |
+| --- | --- | --- |
+| `POST /auth/login` | todos | Devuelve un token opaco atado al rol y al cliente |
+| `GET /customers/me/offers` | cliente | Ofertas vigentes de C6 y la destacada. Sin rango de negociación |
+| `POST /chat/messages` | cliente | Mensaje al orquestador. Sin `session_id`, abre sesión |
+| `POST /chat/confirm` | cliente | Botón Sí o No de la acción pendiente |
+| `GET /analyst/cases` | analista | Casos C9 de revisión, pendientes o con información pedida |
+| `POST /analyst/cases/{case_id}/decision` | analista | Aprobar, rechazar o pedir información |
+| `GET /advisor/sessions` | asesor | Casos C9 traspasados al asesor, con sus mensajes |
+| `POST /advisor/sessions/{case_id}/messages` | asesor | Mensaje con monto propuesto dentro del rango |
+
+Credenciales de DEMO. Públicas a propósito: NO son reales ni secretas.
+
+| Usuario | Clave | Rol |
+| --- | --- | --- |
+| `DEMO000001` ... `DEMO000018` | `radia-demo` | cliente demo (ver `eval/demo_customers.py`) |
+| `analyst.demo` | `radia-demo` | analista |
+| `advisor.demo` | `radia-demo` | asesor |
+
+Reglas:
+
+- Cabecera `Authorization: Bearer <token>`. Sin token válido, 401. Rol ajeno, 403.
+- La identidad sale del token. El cuerpo nunca trae `customer_id`.
+- La sesión de chat es de quien la abrió. Otro cliente sobre ella recibe 403.
+- Monto del asesor fuera del rango de negociación del caso: 422. Caso ya decidido: 409.
+- Ofertas: `data_dir/gold/active_offers.parquet` si existe; si no, `demo_offers()`.
+- Moneda de la sesión según el país del cliente demo. Tasas aproximadas y provisionales (`api/state.py`).
+- LLM: `FakeLanguageModel`. Groq solo con `USE_GROQ=true` (gasto: checkpoint de Pablo).
+- Traces JSONL en `data_dir/traces/`.
+- Tokens, sesiones, casos y mensajes viven en memoria: se pierden al reiniciar.
 
 Detalle en [[propuesta]] y [[trabajo_en_paralelo]].
