@@ -12,14 +12,16 @@ Reglas (ver [[propuesta]] y `.claude/rules/git.md`, checkpoints):
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import boto3
 from boto3.s3.transfer import TransferConfig
+from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import AwareDatetime, BaseModel, Field
 
 from radia.config import CREDIT_TABLES, Settings
@@ -59,6 +61,8 @@ class Manifest(BaseModel):
 def make_client(settings: Settings) -> S3Client:
     """Cliente con credenciales de la configuración, o la cadena por defecto de boto3."""
     kwargs: dict[str, str] = {"region_name": settings.aws_default_region}
+    if bool(settings.aws_access_key_id) != bool(settings.aws_secret_access_key):
+        raise ValueError("credenciales de AWS incompletas: falta la clave o el secreto")
     if settings.aws_access_key_id and settings.aws_secret_access_key:
         kwargs["aws_access_key_id"] = settings.aws_access_key_id.get_secret_value()
         kwargs["aws_secret_access_key"] = (
@@ -121,8 +125,29 @@ def _state_path(raw_dir: Path) -> Path:
 
 
 def _load_state(raw_dir: Path) -> dict[str, str]:
+    """ETags ya descargados. Un estado ilegible cuenta como vacío (se re-verifica)."""
     path = _state_path(raw_dir)
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+
+
+def _save_state(raw_dir: Path, state: dict[str, str]) -> None:
+    """Escritura atómica: un corte a mitad nunca deja el JSON corrupto."""
+    tmp = _state_path(raw_dir).with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=0), encoding="utf-8")
+    os.replace(tmp, _state_path(raw_dir))
+
+
+def _target(raw_dir: Path, key: str) -> Path:
+    """Ruta local de una clave, sin salir de raw_dir aunque el manifiesto traiga `..`."""
+    target = (raw_dir / key).resolve()
+    if not target.is_relative_to(raw_dir.resolve()):
+        raise ValueError(f"clave fuera de raw_dir: {key}")
+    return target
 
 
 def pending_entries(manifest: Manifest, raw_dir: Path) -> list[ManifestEntry]:
@@ -131,28 +156,45 @@ def pending_entries(manifest: Manifest, raw_dir: Path) -> list[ManifestEntry]:
     return [
         e
         for e in manifest.entries
-        if state.get(e.key) != e.etag or not (raw_dir / e.key).exists()
+        if state.get(e.key) != e.etag or not _target(raw_dir, e.key).exists()
     ]
 
 
 def download(
     client: S3Client, manifest: Manifest, raw_dir: Path, max_concurrency: int = 4
 ) -> list[ManifestEntry]:
-    """Descarga solo lo pendiente. Devuelve lo descargado."""
+    """Descarga solo lo pendiente. Devuelve lo descargado.
+
+    Cada éxito queda anotado aunque otro archivo falle, así un reintento no
+    vuelve a pedir lo que ya llegó. El primer error se relanza al final.
+    """
+    raw_dir.mkdir(parents=True, exist_ok=True)
     todo = pending_entries(manifest, raw_dir)
     # Una sola conexión por archivo: la concurrencia la controla el pool de abajo.
     transfer = TransferConfig(use_threads=False)
     state = _load_state(raw_dir)
 
     def fetch(entry: ManifestEntry) -> ManifestEntry:
-        target = raw_dir / entry.key
+        target = _target(raw_dir, entry.key)
         target.parent.mkdir(parents=True, exist_ok=True)
-        client.download_file(manifest.bucket, entry.key, str(target), Config=transfer)
+        part = target.with_name(target.name + ".part")
+        client.download_file(manifest.bucket, entry.key, str(part), Config=transfer)
+        os.replace(part, target)
         return entry
 
+    done: list[ManifestEntry] = []
+    errors: list[BaseException] = []
     with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
-        for entry in pool.map(fetch, todo):
+        futures = [pool.submit(fetch, e) for e in todo]
+        for future in as_completed(futures):
+            try:
+                entry = future.result()
+            except (BotoCoreError, ClientError, OSError, ValueError) as exc:
+                errors.append(exc)
+                continue
             state[entry.key] = entry.etag
-            # Se guarda tras cada archivo: si se corta, se retoma sin repetir.
-            _state_path(raw_dir).write_text(json.dumps(state, indent=0), "utf-8")
-    return todo
+            _save_state(raw_dir, state)
+            done.append(entry)
+    if errors:
+        raise errors[0]
+    return done
