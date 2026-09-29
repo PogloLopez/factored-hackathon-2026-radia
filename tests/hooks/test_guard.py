@@ -159,6 +159,34 @@ def test_env_bloqueado_y_example_permitido(env):
     guard.check_bash("cat ." + "env.example")
 
 
+# ---------- check_bash: S3 ----------
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "aws s3 ls s3://bucket/data/",
+        "aws s3 sync s3://bucket/data/ ./data/",
+        "aws s3 cp s3://bucket/data/ . --recursive",
+        "aws s3api list-objects-v2 --bucket b",
+        "AWS S3 ls",
+        "& aws.exe s3 ls",
+        '& "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe" s3 ls',
+        "cd x && aws s3 ls",
+        "echo hi | aws s3 ls",
+    ],
+)
+def test_cli_aws_s3_bloqueada(env, cmd):
+    assert_blocked(cmd)
+
+
+@pytest.mark.parametrize(
+    "cmd", ["aws --version", "aws sts get-caller-identity", "echo laws s3", "uv run aws_s3x"]
+)
+def test_otros_comandos_aws_permitidos(env, cmd):
+    guard.check_bash(cmd)
+
+
 @pytest.mark.parametrize("cmd", ["ls -la", "uv run pytest -q", "echo hola", ""])
 def test_no_git_no_bloquea(env, cmd):
     guard.check_bash(cmd)
