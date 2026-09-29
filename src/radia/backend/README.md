@@ -86,19 +86,27 @@ flowchart LR
 - La decisión sale siempre de C6 (política C7). El LLM nunca decide ni calcula montos.
 - Ambiguo: pide aclaración. No soportado: indica el canal.
 - Ingreso declarado en el chat ("gano X", "mi ingreso es X"): pregunta abierta para el analista. La decisión adjunta no cambia. Mencionar ingresos sin monto sigue el intent normal.
+- Ese camino solo aplica con intents de crédito (ofertas, pedir producto, requisitos, por qué no) o ambiguo ("gano X" a secas). Un tema no soportado sigue su redirección.
+- El ingreso declarado nunca cuenta como monto pedido (modelo falso y Groq).
 - Pedir humano o disputar: handoff al asesor, aunque mencione el sueldo.
 - Montos del chat: en moneda local salvo que digan USD o dólares. Se convierten con la tasa de la sesión antes de compararlos con cupos en USD. Sin tasa, no enrutan: van como pregunta abierta. El analista ve la moneda original.
 - Monto ambiguo (fechas, varios números, formatos raros): se ignora, nunca se adivina.
+- Un número solo es monto con contexto de dinero: `$`, moneda (pesos, USD, MXN…), "mil", "millones", "monto", "cupo de", "por" o verbo de ingreso. "12 meses", "2 tarjetas" o "15%" no son montos.
+- Monto concedido: se trunca a centavos antes de mostrarlo y registrarlo. Bajo 1.000 USD se muestra con 2 decimales. Lo confirmado y lo guardado coinciden.
+- Monto convertido menor a 1 USD: no se ofrece, se pide aclaración.
 - Automático con monto menor al cupo: se confirma y registra el monto pedido, también bajo el mínimo de negociación (menos exposición que lo aprobado). Automático sin cupo: fallback al analista.
 - Pedido de crédito junto a un tema no soportado ("perdí mi empleo, quiero un préstamo"): gana el crédito.
 - Sesión en handoff: respuesta fija, sin llamar al LLM ni cambiar el idioma.
 - Sesiones vencidas: responden "venció" durante `evict_after` y luego se expulsan en el siguiente acceso.
+- El diccionario de sesiones se protege con un lock: crear, leer y expulsar son seguros entre hilos.
 
 Permisos (en `tools.py`, fuera del LLM):
 
 - Toda tool recibe la sesión. Otro `customer_id` se deniega (`customer_mismatch`). Sesión vencida también.
 - `create_application` exige confirmación aceptada, oferta propia, vigente y automática.
 - Idempotente por `confirmation_id`: un reintento no duplica la solicitud.
+- Una solicitud por oferta y cliente. Otra con distinta confirmación se deniega (`application_exists`), no se devuelve la existente: no se reporta como nueva una acción que no ocurrió.
+- El orquestador revisa antes (`find_application`): si ya existe, informa la referencia y no pide confirmar.
 - Registra el monto confirmado, nunca más que el cupo (`amount_above_offer`).
 - Cada turno pasa su propio recolector de `ToolCall`: turnos concurrentes no mezclan trazas.
 
@@ -112,6 +120,7 @@ Fallback:
 Tracing:
 
 - Cada turno (mensaje o confirmación) escribe un `TurnTrace` (C11): intent, tools, comportamientos, nivel, reglas, fuentes, versiones, tokens, costo y latencia.
+- Tokens y costo del turno: suma de su propio recolector de `Usage` (una entrada por llamada al LLM). El acumulado global de `GroqLanguageModel` se protege con un lock.
 - Sin texto del cliente. JSONL en `data_dir/traces/`, un archivo por día.
 - El error de una tool guarda solo el tipo de la excepción, nunca su mensaje.
 
