@@ -166,8 +166,12 @@ def _features_sql(snapshot: date) -> str:
         SELECT customer_id,
                COUNT(*) AS n_credit_products,
                COALESCE(SUM(balance_usd), 0) AS total_credit_balance_usd,
-               SUM(balance_usd) FILTER (WHERE product_type = 'Credit Card')
-                   AS card_balance_usd,
+               -- Algún producto sin tasa de cambio: el saldo total queda parcial.
+               bool_or(balance_usd IS NULL) AS missing_fx,
+               -- Mismo universo que el cupo: tarjetas con cupo > 0.
+               SUM(balance_usd) FILTER (
+                   WHERE product_type = 'Credit Card' AND limit_usd > 0
+               ) AS card_balance_usd,
                SUM(limit_usd) FILTER (
                    WHERE product_type = 'Credit Card' AND limit_usd > 0
                ) AS card_limit_usd
@@ -217,10 +221,14 @@ def _features_sql(snapshot: date) -> str:
            CAST(b.tenure_months AS BIGINT) AS tenure_months,
            b.monthly_income_usd,
            COALESCE(ac.total_credit_balance_usd, 0) AS total_credit_balance_usd,
-           CASE WHEN b.monthly_income_usd > 0
+           -- Con saldo parcial (falta una tasa) los ratios quedan nulos: dato
+           -- faltante, no un ratio subestimado.
+           CASE WHEN b.monthly_income_usd > 0 AND NOT COALESCE(ac.missing_fx, false)
                 THEN COALESCE(ac.total_credit_balance_usd, 0) / b.monthly_income_usd
            END AS debt_to_income,
-           ac.card_balance_usd / ac.card_limit_usd AS credit_utilization,
+           CASE WHEN NOT COALESCE(ac.missing_fx, false)
+                THEN ac.card_balance_usd / ac.card_limit_usd
+           END AS credit_utilization,
            i.avg_monthly_inflow_usd_6m,
            i.income_stability_6m,
            CAST(COALESCE(ac.n_credit_products, 0) AS BIGINT) AS n_credit_products,
