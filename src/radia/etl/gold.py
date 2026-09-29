@@ -233,7 +233,7 @@ def _features_sql(snapshot: date) -> str:
     """
 
 
-def _write(con: duckdb.DuckDBPyConnection, df: pd.DataFrame, path: Path) -> None:
+def write_parquet(con: duckdb.DuckDBPyConnection, df: pd.DataFrame, path: Path) -> None:
     """Escribe el parquet de forma atómica (archivo temporal y renombre)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".parquet.tmp")
@@ -264,7 +264,7 @@ def build_features(
         )
     df["credit_score"] = df["credit_score"].astype("Int64")
     df = validate(GoldCustomerFeatures, df)
-    _write(con, df, gold_path(settings, "customer_features"))
+    write_parquet(con, df, gold_path(settings, "customer_features"))
     return df
 
 
@@ -292,5 +292,5 @@ def build_limit_labels(
         """
     ).df()
     df = validate(GoldLimitLabels, df)
-    _write(con, df, gold_path(settings, "limit_labels"))
+    write_parquet(con, df, gold_path(settings, "limit_labels"))
     return df
