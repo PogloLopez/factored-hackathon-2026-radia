@@ -65,6 +65,15 @@ class ToolDenied(Exception):
         self.code = code
 
 
+class ApplicationExists(ToolDenied):
+    """Ya hay otra solicitud para la oferta. Trae su referencia (del mismo
+    cliente) para informarla sin depender de otra lectura."""
+
+    def __init__(self, reference: str) -> None:
+        super().__init__("application_exists")
+        self.reference = reference
+
+
 class TransientToolError(Exception):
     """Falla técnica reintentable (timeout, servicio caído)."""
 
@@ -248,7 +257,7 @@ class InMemoryApplicationStore:
             if existing is not None:
                 if existing.confirmation_id == confirmation_id:
                     return existing
-                raise ToolDenied("application_exists")
+                raise ApplicationExists(existing.reference)
             return self.create(build())
 
     def get(self, reference: str) -> Application | None:
