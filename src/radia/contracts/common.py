@@ -9,6 +9,9 @@ from enum import StrEnum
 
 CONTRACT_VERSION = "0.1.0"
 
+# Códigos de razón, alerta y regla: snake_case, los traduce la conversación.
+CODE_PATTERN = r"^[a-z][a-z0-9_]*$"
+
 
 class Country(StrEnum):
     MEXICO = "Mexico"
