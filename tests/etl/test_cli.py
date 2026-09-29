@@ -66,3 +66,20 @@ def test_sin_bucket_falla(monkeypatch):
     )
     result = runner.invoke(cli.app, ["manifest"])
     assert result.exit_code != 0
+
+
+def test_bronze_y_silver_por_cli(raw_settings, monkeypatch):
+    monkeypatch.setattr(cli, "get_settings", lambda: raw_settings)
+    result = runner.invoke(cli.app, ["bronze", "--tables", "customers,products"])
+    assert result.exit_code == 0, result.output
+    assert (raw_settings.data_dir / "bronze" / "products.parquet").exists()
+    result = runner.invoke(cli.app, ["silver", "--tables", "customers,products"])
+    assert result.exit_code == 0, result.output
+    assert "customers" in result.output
+    assert (raw_settings.data_dir / "quality" / "products.json").exists()
+
+
+def test_bronze_rechaza_tablas_sin_spec(raw_settings, monkeypatch):
+    monkeypatch.setattr(cli, "get_settings", lambda: raw_settings)
+    result = runner.invoke(cli.app, ["bronze", "--tables", "campaign_sends"])
+    assert result.exit_code != 0
