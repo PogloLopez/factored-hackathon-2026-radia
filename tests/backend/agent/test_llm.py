@@ -1,5 +1,6 @@
 """Tests del modelo falso de lenguaje y las plantillas."""
 
+import groq
 import pytest
 
 from radia.backend.agent.llm import (
@@ -220,3 +221,12 @@ def test_groq_acepta_reescritura_sin_hechos_nuevos():
     ok = "¡Hola! Tienes preaprobado: Tarjeta Básica con cupo de 450 USD. ¿La pides?"
     llm = GroqLanguageModel(NO_ENV, client=_FakeGroqClient(ok))
     assert llm.render("offers_list", facts) == ok
+
+
+def test_ningun_test_instancia_groq_real():
+    # Con clave y sin cliente inyectado, el modelo intentaría crear `groq.Groq`.
+    settings = Settings(_env_file=None, groq_api_key="clave-falsa")
+    with pytest.raises(RuntimeError, match="Groq real"):
+        GroqLanguageModel(settings)
+    with pytest.raises(RuntimeError, match="Groq real"):
+        groq.Groq(api_key="clave-falsa")
