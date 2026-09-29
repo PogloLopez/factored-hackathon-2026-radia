@@ -71,7 +71,9 @@ def test_git_subcommands_varios_y_mayusculas():
     assert [s for s, _ in subs] == ["commit", "merge"]
 
 
-@pytest.mark.parametrize("cmd", ["", "ls -la", "git status", "echo git push", "gitx push"])
+@pytest.mark.parametrize(
+    "cmd", ["", "ls -la", "git status", "echo git push", "gitx push"]
+)
 def test_git_subcommands_ignora_no_relevantes(cmd):
     assert guard.git_subcommands(cmd) == []
 
@@ -187,7 +189,8 @@ def test_cli_aws_s3_bloqueada(env, cmd):
 
 
 @pytest.mark.parametrize(
-    "cmd", ["aws --version", "aws sts get-caller-identity", "echo laws s3", "uv run aws_s3x"]
+    "cmd",
+    ["aws --version", "aws sts get-caller-identity", "echo laws s3", "uv run aws_s3x"],
 )
 def test_otros_comandos_aws_permitidos(env, cmd):
     guard.check_bash(cmd)
