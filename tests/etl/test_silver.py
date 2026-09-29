@@ -143,3 +143,22 @@ def test_bronze_sin_filas_validas_no_pisa_silver(built):
     with pytest.raises(ValueError, match="0 válidas"):
         build_silver(TABLES["customers"], settings)
     assert silver_path(settings, "customers").read_bytes() == before
+
+
+def test_version_empatada_es_determinista_y_se_reporta(built):
+    """Dos versiones distintas con la misma PK, orden y archivo: se elige igual
+    en cada corrida y el reporte las cuenta como ambiguas."""
+    settings, _ = built
+    _rewrite_bronze(
+        settings,
+        "daily_exchange_rates",
+        "SELECT * FROM {src} UNION ALL "
+        "SELECT * REPLACE ('999.0' AS exchange_rate) FROM {src} LIMIT 1000000",
+    )
+    spec = TABLES["daily_exchange_rates"]
+    first = build_silver(spec, settings)
+    rows_first = _rows(settings, "daily_exchange_rates", "*")
+    second = build_silver(spec, settings)
+    assert _rows(settings, "daily_exchange_rates", "*") == rows_first
+    assert first.ambiguous_versions > 0
+    assert second.ambiguous_versions == first.ambiguous_versions
