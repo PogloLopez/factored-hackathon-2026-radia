@@ -31,7 +31,11 @@ class CustomerStatus(StrEnum):
 
 
 class ProductFamily(StrEnum):
-    """Familia de crédito tal como aparece en `products.product_type`."""
+    """Familia de crédito tal como aparece en `products.product_type`.
+
+    Solo productos de crédito. `product_type` también trae cuentas, débito e
+    inversión, que quedan fuera del alcance y no se validan con este enum.
+    """
 
     CREDIT_CARD = "Credit Card"
     PERSONAL_LOAN = "Personal Loan"
@@ -49,9 +53,17 @@ class ProductCode(StrEnum):
 
     @property
     def family(self) -> ProductFamily:
-        if self.value.startswith("CC_"):
-            return ProductFamily.CREDIT_CARD
-        return ProductFamily(self.value.replace("_", " ").title())
+        return PRODUCT_FAMILY[self]
+
+
+# Explícito. tests/contracts/test_common.py falla si un producto nuevo no tiene familia.
+PRODUCT_FAMILY: dict[ProductCode, ProductFamily] = {
+    ProductCode.CC_BASIC: ProductFamily.CREDIT_CARD,
+    ProductCode.CC_GOLD: ProductFamily.CREDIT_CARD,
+    ProductCode.CC_BLACK: ProductFamily.CREDIT_CARD,
+    ProductCode.PERSONAL_LOAN: ProductFamily.PERSONAL_LOAN,
+    ProductCode.MORTGAGE: ProductFamily.MORTGAGE,
+}
 
 
 class Exposure(StrEnum):
