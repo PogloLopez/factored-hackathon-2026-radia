@@ -52,6 +52,23 @@ Un JSON por tabla en `data/local/quality/` (`QualityReport` en `silver.py`):
 - Huérfanos por FK: `products.customer_id`, `transactions.customer_id` y `transactions.product_id`. `null` si la dimensión aún no tiene Silver.
 - Columnas de la spec que faltan en raw y columnas nuevas no previstas.
 
+## Ofertas vigentes (C6)
+
+```bash
+uv run radia-etl offers                   # gold/customer_features + gold/internal_score -> gold/active_offers.parquet
+```
+
+- Código en `offers.py`. `build_offers` es pura: misma entrada, mismo DataFrame.
+- Una fila por cliente × producto del catálogo, incluidas las no elegibles.
+- Usa la última fecha de corte de C1 por cliente y el puntaje de C3 de esa fecha.
+- Cupo: `IncomeMultipleBaseline` (C4). Decisión: `RulesPolicy` (C7), escrita tal cual. Aquí no hay reglas.
+- Sin datos del chat: la solicitud solo trae el producto.
+- Ingreso 0 o nulo en C1 pasa como dato faltante (la política lo manda al analista).
+- `generated_at` con zona, guardado en UTC sin zona. Vence a los 7 días (`ttl_days`).
+- `offer_id`: hash de cliente, producto y `generated_at`. Cambia en cada corrida.
+- Parquet con DuckDB: el proyecto no depende de pyarrow.
+- Si falta un insumo, el job falla con la ruta que falta.
+
 ## Entrega a otros
 
 - Features Gold (C1) y etiquetas (C2) para los modelos.
