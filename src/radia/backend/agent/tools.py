@@ -4,7 +4,8 @@
   cliente. Otro `customer_id` se deniega, diga lo que diga el mensaje.
 - Sesión vencida: toda tool se deniega.
 - `create_application` exige una confirmación aceptada en la sesión, una
-  oferta del cliente, vigente y de nivel automático. La política decide; la
+  oferta del cliente, vigente y de nivel automático. Registra el monto
+  confirmado, que nunca supera el cupo. La política decide; la
   tool vuelve a chequear.
 - Reintentos acotados (tenacity) solo en fallas técnicas
   (`TransientToolError`). Una denegación nunca se reintenta.
@@ -349,13 +350,16 @@ class ToolBox:
                 or offer.offered_limit_usd is None
             ):
                 raise ToolDenied("offer_not_automatic")
+            # Se registra el monto confirmado, nunca más que el cupo de la oferta.
+            if not 0 < pending.limit_usd <= offer.offered_limit_usd:
+                raise ToolDenied("amount_above_offer")
             return self.applications.create(
                 Application(
                     reference=_new_id("APP"),
                     customer_id=session.customer_id,
                     offer_id=offer.offer_id,
                     product_code=offer.product_code,
-                    limit_usd=offer.offered_limit_usd,
+                    limit_usd=pending.limit_usd,
                     confirmation_id=confirmation_id,
                     created_at=now,
                 )
