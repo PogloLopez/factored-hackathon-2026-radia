@@ -22,6 +22,12 @@ from typing import TYPE_CHECKING
 import boto3
 from boto3.s3.transfer import TransferConfig
 from pydantic import AwareDatetime, BaseModel, Field
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from radia.config import CREDIT_TABLES, Settings
 
@@ -134,6 +140,14 @@ def _load_state(raw_dir: Path) -> dict[str, str]:
         return {}
 
 
+# En Windows el antivirus o el indexador abren un archivo recién escrito por
+# un instante y `os.replace` falla con PermissionError. Se reintenta poco.
+@retry(
+    retry=retry_if_exception_type(PermissionError),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=0.05, max=1),
+    reraise=True,
+)
 def _save_state(raw_dir: Path, state: dict[str, str]) -> None:
     """Escritura atómica: un corte a mitad nunca deja el JSON corrupto."""
     tmp = _state_path(raw_dir).with_suffix(".tmp")
