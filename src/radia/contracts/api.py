@@ -9,8 +9,9 @@ Productor: backend (`radia.backend.api`). Consumidor: frontend.
 - Los montos van en USD, como C6. La moneda local es solo para leer el chat.
 - Política sintética: toda oferta lleva `synthetic_policy` verdadero.
 - Errores: el formato por defecto de FastAPI (`{"detail": ...}`). 401 sin token
-  válido, 403 con rol o sesión ajena, 404 si no existe, 409 si el estado no
-  permite la operación y 422 si el cuerpo no valida o el monto sale del rango.
+  válido, 403 con rol ajeno, 404 si no existe o es una sesión ajena (misma
+  respuesta: no se sondea un id ajeno), 409 si el estado no permite la
+  operación y 422 si el cuerpo no valida o el monto sale del rango.
 """
 
 from enum import StrEnum
@@ -21,7 +22,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from radia.contracts.common import AttentionLevel, ProductCode
 from radia.contracts.handoff import CaseStatus, HandoffCase
 
-CONTRACT_VERSION = "0.1.0"
+CONTRACT_VERSION = "0.1.1"
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
