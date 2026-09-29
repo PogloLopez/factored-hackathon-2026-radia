@@ -92,6 +92,8 @@ def test_git_subcommands_ignora_no_relevantes(cmd):
         "git push origin `\nmain",
         "git push origin HEAD:main",
         "git push origin HEAD:develop",
+        "git push origin HEAD:refs/heads/main",
+        "git push origin refs/heads/develop",
     ],
 )
 def test_push_a_rama_protegida_bloqueado(env, cmd):
