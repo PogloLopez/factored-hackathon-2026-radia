@@ -33,6 +33,9 @@ class QualityReport(BaseModel):
     null_pk_removed: int
     exact_duplicates_removed: int
     stale_versions_removed: int
+    # PK con dos versiones distintas empatadas en orden y archivo. Se elige una
+    # de forma determinista, pero el dato real es ambiguo: revisar a mano.
+    ambiguous_versions: int = 0
     null_rate: dict[str, float]
     cast_failures: dict[str, int]
     # None: la dimensión de referencia aún no tiene Silver.
@@ -124,9 +127,24 @@ def build_silver(
         CREATE OR REPLACE TEMP TABLE latest AS
         SELECT * FROM distinct_rows
         QUALIFY row_number() OVER (
-            PARTITION BY {pk_cols} ORDER BY {order}_source_file DESC
+            PARTITION BY {pk_cols} ORDER BY {order}_source_file DESC, {all_cols}
         ) = 1
         """
+    )
+    ambiguous = _count(
+        con,
+        f"""
+        SELECT COUNT(*) FROM (
+            SELECT {pk_cols} FROM (
+                SELECT * FROM distinct_rows
+                QUALIFY rank() OVER (
+                    PARTITION BY {pk_cols} ORDER BY {order}_source_file DESC
+                ) = 1
+            )
+            GROUP BY {pk_cols}
+            HAVING COUNT(*) > 1
+        )
+        """,
     )
     rows_out = _count(con, "SELECT COUNT(*) FROM latest")
     if rows_in > 0 and rows_out == 0:
@@ -177,6 +195,7 @@ def build_silver(
         null_pk_removed=rows_in - with_pk,
         exact_duplicates_removed=with_pk - distinct_rows,
         stale_versions_removed=distinct_rows - rows_out,
+        ambiguous_versions=ambiguous,
         null_rate=null_rate,
         cast_failures=cast_failures,
         orphans=orphans,
