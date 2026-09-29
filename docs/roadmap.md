@@ -17,11 +17,14 @@ Detalle por persona: [[propuesta]], sección 7.
 
 ## Pendientes
 
+Pipeline completo en `develop`, probado con fixtures sintéticos:
+`radia-etl manifest → download → bronze → silver → gold → score → offers`.
+
 Checkpoints de Pablo:
 
 - [ ] Aprobar la descarga del manifiesto (2184 objetos, 1.25 GB, o 924 MB sin `campaign_sends`). Ver `src/radia/etl/README.md`
-- [ ] Pesos del puntaje (`score_weights_v0.yaml`, provisionales)
-- [ ] Umbrales de bandas y topes por exposición (`rules_v0.yaml`, provisionales)
+- [ ] Pesos del puntaje (`src/radia/etl/score_weights_v0.yaml`, provisionales, rango validado [150, 950])
+- [ ] Umbrales de bandas y topes por exposición (`src/radia/backend/policy/rules_v0.yaml`, provisionales)
 - [ ] Congelar contratos v1 tras perfilar los datos reales
 
 Trabajo:
@@ -34,8 +37,8 @@ Trabajo:
 - [x] Bronze y silver con reporte de calidad
 - [x] Motor de política v0 (C7)
 - [x] Baseline de cupo (C4)
-- [ ] Gold (C1, C2 de cupo) y puntaje (C3)
-- [ ] Job de ofertas vigentes (C6)
+- [x] Gold (C1, C2 de cupo) y puntaje (C3)
+- [x] Job de ofertas vigentes (C6). Contratos C6/C7 en 0.2.0 con trazabilidad
 - [ ] Clientes demo en `tests/fixtures/`, tras la descarga
 - [ ] Orquestador, tools y API (C8). LLM: Groq
 - [ ] Casos de evaluación (C10) y runner
