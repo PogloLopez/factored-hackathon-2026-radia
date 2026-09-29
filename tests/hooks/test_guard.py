@@ -203,6 +203,33 @@ def test_add_sin_commit_no_llama_ruff(env):
     assert env["ruff"] == []
 
 
+class FakePath:
+    """Solo `vivo.py` existe en disco. Evita tmp_path, que es lento en Windows."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def is_file(self):
+        return self.path == "vivo.py"
+
+
+def test_ruff_autofix_ignora_archivos_borrados(monkeypatch):
+    """Un archivo borrado en el commit no llega a ruff ni bloquea."""
+    monkeypatch.setattr(guard, "Path", FakePath)
+    monkeypatch.setattr(guard, "git_lines", lambda *args: ["borrado.py", "vivo.py"])
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    monkeypatch.setattr(guard.subprocess, "run", fake_run)
+    guard.ruff_autofix(all_tracked=False, pathspecs=["."])
+    assert calls
+    assert all("borrado.py" not in cmd for cmd in calls)
+    assert any("vivo.py" in cmd for cmd in calls)
+
+
 # ---------- check_bash: secretos ----------
 
 

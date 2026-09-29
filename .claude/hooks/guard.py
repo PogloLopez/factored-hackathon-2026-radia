@@ -13,7 +13,7 @@ import re
 import shlex
 import subprocess
 import sys
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
 PROTECTED = {"main", "develop"}
 ENV_IN_TEXT = re.compile(r"(?<![\w.-])\.env(?!\.example)(\.[\w-]+)?(?![\w.-])")
@@ -76,7 +76,10 @@ def ruff_autofix(all_tracked: bool, pathspecs: list[str] | None = None) -> None:
             )
         )
     # Mismo alcance que el CI: todo el repo, incluido .claude/.
-    files = sorted(f for f in files if PurePath(f).suffix in RUFF_FORMAT)
+    # Los archivos borrados no existen: ruff fallaría con E902 y bloquearía el commit.
+    files = sorted(
+        f for f in files if PurePath(f).suffix in RUFF_FORMAT and Path(f).is_file()
+    )
     lint = [f for f in files if PurePath(f).suffix in RUFF_LINT]
     if not files:
         return
