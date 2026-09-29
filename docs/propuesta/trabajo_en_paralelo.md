@@ -65,10 +65,10 @@ Reglas cortas en `.claude/rules/git.md`.
 
 ### Pull requests
 
-- Todo PR va a `develop` y necesita una aprobación de otra persona.
+- Todo PR va a `develop`. Mientras se trabaje en solitario, la aprobación humana se reemplaza por compuertas automáticas (reviewer, tester, CI y `/code-review`). Detalle en `.claude/rules/git.md`.
 - Se usa **Rebase and merge**, así los commits atómicos llegan intactos a `develop` y la historia queda lineal.
 - Si un PR toca `src/radia/contracts/`, lo revisan el productor y el consumidor de ese contrato.
-- Opcional, por decidir. CODEOWNERS para asignar revisores automáticamente y un CI que corra las pruebas en cada PR.
+- CI en GitHub Actions corre ruff y pytest en cada PR. CODEOWNERS queda para cuando vuelva el equipo.
 
 ### Rutina diaria de cada persona
 

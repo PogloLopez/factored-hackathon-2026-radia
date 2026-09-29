@@ -237,7 +237,7 @@ La clusterización de clientes se usa en el análisis que justifica el problema 
 - Los contratos entre piezas se definen el día 2 y cada pieza arranca con mocks, para que nadie espere a nadie.
 - Cada pieza se entrega con al menos una prueba automática.
 - El día 5 todos escriben casos de prueba.
-- Nada entra a develop sin revisión de, al menos, otra persona.
+- Nada entra a develop sin revisión. En solitario, compuertas automáticas. Ver [[trabajo_en_paralelo]].
 - Reunión diaria de 15 minutos.
 - Después del feature freeze solo se corrigen fallas (fixes).
 
