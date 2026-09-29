@@ -251,3 +251,10 @@ def test_preferential_es_columna_obligatoria(offers):
     assert "preferential" in offers.columns
     with pytest.raises(ERRORS):
         validate(ActiveOffers, offers.drop(columns="preferential"))
+
+
+def test_falla_codigo_con_salto_de_linea_final(offers):
+    df = offers.copy()
+    df.loc[0, "reasons_json"] = '["mock_reason\n"]'
+    with pytest.raises(ERRORS):
+        validate(ActiveOffers, df)

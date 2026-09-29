@@ -41,7 +41,7 @@ def _is_code_list(raw: str, *, allow_empty: bool) -> bool:
     return (
         isinstance(parsed, list)
         and (allow_empty or len(parsed) > 0)
-        and all(isinstance(r, str) and re.match(CODE_PATTERN, r) for r in parsed)
+        and all(isinstance(r, str) and re.fullmatch(CODE_PATTERN, r) for r in parsed)
     )
 
 
