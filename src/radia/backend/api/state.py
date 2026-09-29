@@ -1,7 +1,9 @@
 """Estado de la API: piezas del orquestador, fuentes y almacenes en memoria.
 
-- Ofertas C6: `data_dir/gold/active_offers.parquet` si existe; si no, las de
-  los clientes demo (`demo_offers`).
+- Ofertas C6: las de los clientes demo (`demo_offers`) siempre, más las de
+  `data_dir/gold/active_offers.parquet` si existe. Solo los demo pueden hacer
+  login: así la demo funciona con o sin Gold. El login real con clientes de
+  Gold queda para después de la descarga.
 - LLM: `FakeLanguageModel` salvo `use_groq` verdadero (gasto: checkpoint de
   Pablo).
 - Traces: JSONL en `settings.traces_dir`, salvo que se inyecte otro sink.
@@ -42,11 +44,17 @@ COUNTRY_CURRENCY: dict[Country, tuple[Currency, float]] = {
 
 
 def load_offers(settings: Settings, clock: Callable[[], datetime]) -> pd.DataFrame:
-    """C6 de Gold si existe; si no, el de los clientes demo."""
+    """C6 de Gold (si existe) más el de los clientes demo.
+
+    Un `offer_id` demo que ya esté en Gold se descarta: Gold manda.
+    """
+    demo = demo_offers(clock())
     path = settings.data_dir / "gold" / OFFERS_FILE
-    if path.exists():
-        return pd.read_parquet(path)
-    return demo_offers(clock())
+    if not path.exists():
+        return demo
+    gold = pd.read_parquet(path)
+    extra = demo[~demo["offer_id"].isin(gold["offer_id"])]
+    return pd.concat([gold, extra], ignore_index=True)
 
 
 def build_llm(settings: Settings) -> LanguageModel:
