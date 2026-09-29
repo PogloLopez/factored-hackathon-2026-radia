@@ -320,7 +320,17 @@ class Orchestrator:
                     f"sugiere {suggested}."
                 )
         if level == AttentionLevel.AUTOMATIC:
-            limit = offer.offered_limit_usd or 0
+            limit = offer.offered_limit_usd
+            if limit is None or limit <= 0:
+                # Automático sin cupo: no hay qué confirmar. Lo revisa un analista.
+                # Sin decisión adjunta: C9 no acepta un automático sin cupo.
+                return self._fallback_handoff(
+                    session,
+                    turn,
+                    product,
+                    rule_id="offer_without_limit",
+                    questions=[f"La oferta {offer.offer_id} es automática sin cupo."],
+                )
             if amount is not None and amount > limit:
                 # Pedir más del cupo no se aprueba solo: se negocia o se revisa.
                 within = amount <= (offer.negotiation_max_usd or 0)
@@ -338,7 +348,11 @@ class Orchestrator:
                     offer=offer,
                     open_questions=questions,
                 )
-            return self._ask_confirmation(session, turn, offer)
+            # Pedir menos del cupo se respeta, también bajo el mínimo de
+            # negociación: menos monto es menos exposición que lo aprobado. El
+            # mínimo acota la negociación del asesor, no el crédito.
+            granted = amount if amount is not None else limit
+            return self._ask_confirmation(session, turn, offer, granted)
 
         if level == AttentionLevel.ANALYST_AND_ADVISOR:
             questions.append("Tras la revisión de riesgo, asignar asesor.")
@@ -357,8 +371,10 @@ class Orchestrator:
             open_questions=questions,
         )
 
-    def _ask_confirmation(self, session: Session, turn: _Turn, offer: Offer) -> str:
-        limit = offer.offered_limit_usd or 0
+    def _ask_confirmation(
+        self, session: Session, turn: _Turn, offer: Offer, limit: float
+    ) -> str:
+        """Pide confirmar `limit` USD: el cupo o un monto menor pedido."""
         name = product_name(offer.product_code, session.language)
         session.pending = PendingConfirmation(
             confirmation_id=f"CONF-{uuid.uuid4().hex[:10].upper()}",
@@ -449,6 +465,7 @@ class Orchestrator:
             stored is not None
             and stored.customer_id == session.customer_id
             and stored.offer_id == offer.offer_id
+            and stored.limit_usd == application.limit_usd
             and stored.status == "submitted"
         )
 
@@ -610,10 +627,12 @@ class Orchestrator:
         offer: Offer | None = None,
         actions: Sequence[str] = (),
         questions: Sequence[str] = (),
+        rule_id: str | None = None,
     ) -> str:
         """Acción sin oferta confiable o con tool caída: pasa al analista."""
         turn.behaviors.append(Behavior.SAFE_FALLBACK)
-        turn.rule_ids.append("offer_unavailable" if offer is None else "tool_failure")
+        default_rule = "offer_unavailable" if offer is None else "tool_failure"
+        turn.rule_ids.append(rule_id or default_rule)
         default = (
             f"No hay oferta vigente verificada para {_product_es(product)} "
             "(vencida, faltante o servicio caído)."
