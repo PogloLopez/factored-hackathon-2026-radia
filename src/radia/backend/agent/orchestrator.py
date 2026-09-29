@@ -37,7 +37,7 @@ from radia.backend.agent.llm import (
     format_usd,
     join_items,
     product_name,
-    reason_text,
+    reasons_text,
 )
 from radia.backend.agent.session import PendingConfirmation, Session, SessionState
 from radia.backend.agent.tools import (
@@ -545,7 +545,7 @@ class Orchestrator:
     def _explain_not_eligible(self, session: Session, turn: _Turn, offer: Offer) -> str:
         lang = session.language
         turn.attention_level = AttentionLevel.NOT_ELIGIBLE
-        reasons = join_items([reason_text(r, lang) for r in offer.reasons], lang)
+        reasons = reasons_text(offer.reasons, lang)
         facts = {"product": product_name(offer.product_code, lang), "reasons": reasons}
         if offer.alternative_product_code is not None:
             alternative = product_name(offer.alternative_product_code, lang)

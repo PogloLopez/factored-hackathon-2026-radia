@@ -313,7 +313,7 @@ PRODUCT_NAMES: dict[Language, dict[ProductCode, str]] = {
     },
 }
 
-# Razones de la política traducidas. Un código sin traducción se muestra tal cual.
+# Razones de la política que explican una negativa. Las demás no se muestran.
 REASON_TEXT: dict[Language, dict[str, str]] = {
     ES: {
         "band_low": "tu puntaje interno está en la banda baja",
@@ -366,14 +366,27 @@ def format_usd(amount: float) -> str:
     return f"{amount:,.0f} USD"
 
 
-def reason_text(code: str, language: Language) -> str:
-    return REASON_TEXT[language].get(code, code)
-
-
 def join_items(items: Sequence[str], language: Language) -> str:
     if len(items) <= 1:
         return "".join(items)
     return ", ".join(items[:-1]) + LIST_JOINER[language] + items[-1]
+
+
+GENERIC_REASON = {
+    ES: "tu perfil no cumple hoy las reglas de la política para este producto",
+    PT: "seu perfil hoje não cumpre as regras da política para este produto",
+    EN: "your profile does not meet the policy rules for this product today",
+}
+
+
+def reasons_text(codes: Sequence[str], language: Language) -> str:
+    """Razones que explican una negativa, en texto. Nunca muestra códigos.
+
+    Solo se traducen las razones negativas (p. ej. `band_high` no explica una
+    negativa y se omite). Si ninguna aplica, queda la razón genérica.
+    """
+    texts = [REASON_TEXT[language][c] for c in codes if c in REASON_TEXT[language]]
+    return join_items(texts, language) if texts else GENERIC_REASON[language]
 
 
 def fill_template(template_id: str, facts: Mapping[str, object]) -> str:

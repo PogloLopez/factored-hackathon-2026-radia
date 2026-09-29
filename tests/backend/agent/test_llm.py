@@ -10,6 +10,7 @@ from radia.backend.agent.llm import (
     UnsupportedTopic,
     Usage,
     fill_template,
+    reasons_text,
 )
 from radia.config import Settings
 from radia.contracts.common import ProductCode
@@ -135,3 +136,10 @@ def test_groq_render_descarta_numeros_inventados():
     facts = {"language": "es", "case_id": "CASE-1"}
     llm = GroqLanguageModel(NO_ENV, client=_FakeGroqClient("Aprobado por 999999 USD"))
     assert llm.render("in_handoff", facts) == fill_template("in_handoff", facts)
+
+
+def test_razones_nunca_muestran_codigos():
+    es = reasons_text(["band_low", "exposure_medium"], Language.ES)
+    assert "banda baja" in es and "_" not in es
+    generic = reasons_text(["band_high", "codigo_nuevo"], Language.PT)
+    assert "_" not in generic and "política" in generic
