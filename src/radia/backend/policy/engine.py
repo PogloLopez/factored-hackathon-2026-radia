@@ -84,6 +84,8 @@ class RulesPolicy:
         if exclusion_reasons:
             reasons[:0] = exclusion_reasons
             human = [r for r in advisor_reasons if r in _HUMAN_REQUESTS]
+            # El resto (p. ej. trato preferencial) viaja como alerta para el orquestador.
+            alerts.extend(r for r in advisor_reasons if r not in _HUMAN_REQUESTS)
             if human:
                 reasons.extend(human)
                 return build(AttentionLevel.ADVISOR)
