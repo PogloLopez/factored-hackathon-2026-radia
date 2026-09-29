@@ -5,8 +5,8 @@ Detalle por persona: [[propuesta]], sección 7.
 ## Hitos
 
 - [x] D0 sáb 26 sep. Propuesta, docs y harness
-- [ ] D1 dom 27. Validación de datos. Contratos a código
-- [ ] D2 lun 28. Datos base. Contratos v1
+- [x] D1 dom 27. Contratos a código (v0)
+- [ ] D2 lun 28. Datos base. Contratos v1. Hecho: S3 con manifiesto, bronze, silver, política v0, baseline de cupo. Falta: descarga aprobada y perfilado
 - [ ] D3 mar 29. Puntaje y baselines
 - [ ] D4 mié 30. Camino automático completo. `develop` → `main`
 - [ ] D5 jue 1 oct. Revisión humana y casos difíciles
@@ -17,11 +17,26 @@ Detalle por persona: [[propuesta]], sección 7.
 
 ## Pendientes
 
+Checkpoints de Pablo:
+
+- [ ] Aprobar la descarga del manifiesto (2184 objetos, 1.25 GB, o 924 MB sin `campaign_sends`). Ver `src/radia/etl/README.md`
+- [ ] Pesos del puntaje (`score_weights_v0.yaml`, provisionales)
+- [ ] Umbrales de bandas y topes por exposición (`rules_v0.yaml`, provisionales)
+- [ ] Congelar contratos v1 tras perfilar los datos reales
+
+Trabajo:
+
 - [x] Remoto público
 - [x] Protección de `main` y `develop` en GitHub (PR + CI obligatorio, 0 aprobaciones mientras se trabaja en solitario)
-- [ ] Pesos del puntaje. Responsable por asignar
-- [ ] Umbrales de bandas y topes por exposición
-- [x] Contratos v0 a código (D2). v1 tras perfilar los datos reales
-- [ ] Clientes demo en `tests/fixtures/` (Pablo, D1)
-- [ ] Stack de frontend y orquestación. LLM: Groq
+- [x] Contratos v0 a código
 - [x] Packaging de `src/radia` en `pyproject.toml`
+- [x] Acceso a S3 con manifiesto y descarga idempotente
+- [x] Bronze y silver con reporte de calidad
+- [x] Motor de política v0 (C7)
+- [x] Baseline de cupo (C4)
+- [ ] Gold (C1, C2 de cupo) y puntaje (C3)
+- [ ] Job de ofertas vigentes (C6)
+- [ ] Clientes demo en `tests/fixtures/`, tras la descarga
+- [ ] Orquestador, tools y API (C8). LLM: Groq
+- [ ] Casos de evaluación (C10) y runner
+- [ ] Frontend mínimo
