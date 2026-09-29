@@ -121,6 +121,27 @@ def test_push_sin_args_en_main_bloqueado(env):
     assert_blocked("git push")
 
 
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "git push origin HEAD",
+        "git push -u origin HEAD",
+        "git push origin @",
+        "git push origin 2>&1",
+        "git push origin > out.txt",
+    ],
+)
+def test_push_de_la_rama_actual_en_develop_bloqueado(env, cmd):
+    env["branch"] = "develop"
+    assert_blocked(cmd)
+
+
+def test_push_head_a_feature_permitido(env):
+    guard.check_bash("git push -u origin HEAD")
+    env["branch"] = "develop"
+    guard.check_bash("git push origin HEAD:feat/x")
+
+
 # ---------- check_bash: merge / commit ----------
 
 
@@ -131,6 +152,18 @@ def test_merge_en_protegida_bloqueado(env):
 
 def test_merge_en_feature_permitido(env):
     guard.check_bash("git merge origin/develop")
+
+
+def test_merge_base_y_commit_tree_no_son_merge_ni_commit(env):
+    assert guard.git_subcommands("git merge-base develop HEAD") == []
+    assert guard.git_subcommands("git commit-tree abc") == []
+    env["branch"] = "develop"
+    guard.check_bash("git merge-base develop HEAD")
+
+
+def test_parentesis_en_el_mensaje_no_cortan_el_commit(env):
+    guard.check_bash('git commit -m "feat(etl): x" -a')
+    assert env["ruff"] == [True]
 
 
 def test_commit_en_develop_bloqueado(env):
@@ -198,6 +231,7 @@ def test_env_bloqueado_y_example_permitido(env):
         "aws s3api list-objects-v2 --bucket b",
         "AWS S3 ls",
         "& aws.exe s3 ls",
+        "aws.cmd s3 ls",
         '& "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe" s3 ls',
         "cd x && aws s3 ls",
         "echo hi | aws s3 ls",
