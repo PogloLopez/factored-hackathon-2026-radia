@@ -11,8 +11,8 @@ Flujo de un turno (ver [[propuesta]], secciones 3 y 6):
 5. Analista, asesor, analista y asesor, pedido de humano o disputa: handoff
    C9 con hechos verificados, acciones y preguntas abiertas.
 6. No soportado: redirige al canal. Ambiguo: pide aclaración.
-7. Ingreso declarado en el chat: pregunta abierta para el analista. Nunca
-   cambia la decisión.
+7. Ingreso declarado en el chat (con monto explícito): pregunta abierta para
+   el analista. Nunca cambia la decisión. Pedir asesor gana.
 8. Falla o datos vencidos: fallback seguro. Nunca se inventa una oferta.
 
 Cada turno (mensaje o confirmación) deja un `TurnTrace` (C11) en el sink.
@@ -232,7 +232,12 @@ class Orchestrator:
                 pass
             turn.outcome = Outcome.REFUSED
             return self._say(session, "access_denied")
-        if u.mentions_income:
+        # Solo un ingreso con monto explícito abre este camino. Pedir asesor
+        # o disputar gana: el ingreso va como pregunta abierta del asesor.
+        if u.declared_monthly_income is not None and u.intent not in (
+            Intent.REQUEST_HUMAN,
+            Intent.DISPUTE,
+        ):
             return self._declared_income(session, u, turn)
 
         match u.intent:
@@ -461,6 +466,11 @@ class Orchestrator:
             turn.use_offer(offer)
         else:
             questions.append("No se pudo leer una oferta vigente del cliente.")
+        if u.declared_monthly_income is not None:
+            declared = _money(session, u.declared_monthly_income, u.amount_in_usd)
+            questions.append(
+                f"El cliente declara en el chat un ingreso de {declared}, sin verificar."
+            )
         trigger = (
             "customer_disputes_rejection" if dispute else "customer_requests_human"
         )
