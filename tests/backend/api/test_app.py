@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from radia.backend.agent.llm import FakeLanguageModel
 from radia.backend.agent.session import Currency
-from radia.backend.agent.tracing import JsonlTraceSink
+from radia.backend.agent.tracing import InMemoryTraceSink, JsonlTraceSink
 from radia.backend.api.app import create_app
 from radia.backend.api.auth import ANALYST_USERNAME, DEMO_PASSWORD
 from radia.backend.api.state import ApiState, load_offers
@@ -368,6 +369,57 @@ def test_list_cases_returns_a_copy(app):
     cases.save(_bare_case(2, HandoffType.ADVISOR))
     assert [c.case_id for c in listed] == ["CASE-T000001"]
     assert len(cases.list_cases()) == 2
+
+
+class BlockingLanguageModel(FakeLanguageModel):
+    """Se queda en `classify` con el mensaje "bloquea" hasta que lo suelten."""
+
+    def __init__(self):
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def classify(self, message, history, *, usage=None):
+        if message == "bloquea":
+            self.entered.set()
+            self.release.wait(timeout=10)
+        return super().classify(message, history, usage=usage)
+
+
+def test_slow_turn_does_not_block_other_customer():
+    """El turno lento de un cliente no frena el de otro: sin lock global."""
+    llm = BlockingLanguageModel()
+    app = create_app(
+        Settings(_env_file=None, data_dir=OFFLINE), sink=InMemoryTraceSink(), llm=llm
+    )
+
+    def login(username):
+        response = TestClient(app).post(
+            "/auth/login", json={"username": username, "password": DEMO_PASSWORD}
+        )
+        return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+    slow, fast = login(AUTOMATIC_CUSTOMER), login(ANALYST_CUSTOMER)
+    results: dict[str, int] = {}
+
+    def send(name, headers, message):
+        results[name] = _chat(TestClient(app), headers, message).status_code
+
+    first = threading.Thread(target=send, args=("slow", slow, "bloquea"))
+    second = threading.Thread(target=send, args=("fast", fast, "hola"))
+    first.start()
+    try:
+        assert llm.entered.wait(timeout=5)
+        second.start()
+        # El primero sigue dentro del LLM y el segundo termina igual.
+        second.join(timeout=5)
+        assert results.get("fast") == 200
+        assert "slow" not in results
+    finally:
+        llm.release.set()
+        first.join(timeout=10)
+        second.join(timeout=10)
+    assert results == {"slow": 200, "fast": 200}
 
 
 # --- Ofertas con Gold ------------------------------------------------------------
