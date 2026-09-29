@@ -391,3 +391,21 @@ def test_monto_en_dolares_no_se_convierte(orch):
         session.session_id, "Quiero una tarjeta básica de 1.000 dólares"
     )
     assert "1,000 USD" in case_of(orch, reply).request_summary
+
+
+# --- Ingreso mencionado sin declarar un monto -----------------------------------
+
+
+def test_pregunta_por_ingresos_sigue_su_intent(orch, sink):
+    _, [reply] = chat(orch, "C1", "¿Qué ingresos necesito para la tarjeta básica?")
+    assert reply.handoff_case_id is None
+    assert "450 USD" in reply.reply  # requisitos del nivel automático
+    assert "declared_income_unverified" not in last_trace(sink).rule_ids
+
+
+def test_pedir_asesor_gana_aunque_mencione_el_sueldo(orch, sink):
+    _, [reply] = chat(orch, "C1", "Quiero hablar con un asesor, mi sueldo es 3.000")
+    case = case_of(orch, reply)
+    assert case.handoff_type == HandoffType.ADVISOR
+    assert any("ingreso" in q for q in case.open_questions)
+    assert "customer_requests_human" in last_trace(sink).rule_ids
