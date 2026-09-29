@@ -409,3 +409,45 @@ def test_pedir_asesor_gana_aunque_mencione_el_sueldo(orch, sink):
     assert case.handoff_type == HandoffType.ADVISOR
     assert any("ingreso" in q for q in case.open_questions)
     assert "customer_requests_human" in last_trace(sink).rule_ids
+
+
+# --- Monto pedido menor al cupo y cupo nulo ---------------------------------------
+
+
+@pytest.mark.parametrize("requested", [400, 100])  # dentro y bajo el rango (360-540)
+def test_monto_menor_al_cupo_se_confirma_y_registra(orch, requested):
+    session, [reply] = chat(
+        orch, "C1", f"Quiero una tarjeta básica de {requested} dólares"
+    )
+    assert f"{requested} USD" in reply.reply
+    assert f"{requested} USD" in reply.pending_confirmation.summary
+    done = orch.confirm(
+        session.session_id, reply.pending_confirmation.confirmation_id, True
+    )
+    stored = orch.tools.applications.get(done.application_reference)
+    assert stored.limit_usd == requested
+
+
+class NoLimitRepository:
+    """Oferta automática sin cupo: dato inconsistente de la fuente."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def offers_for(self, customer_id):
+        return [
+            o.model_copy(update={"offered_limit_usd": None})
+            for o in self.inner.offers_for(customer_id)
+        ]
+
+
+def test_automatica_sin_cupo_va_al_fallback(tools, sink, offers_df):
+    repo = NoLimitRepository(InMemoryOfferRepository(offers_df))
+    box = ToolBox(repo, clock=tools.clock, wait=wait_none())
+    orch = Orchestrator(FakeLanguageModel(), box, sink, clock=tools.clock)
+    _, [reply] = chat(orch, "C1", "Quiero una tarjeta básica")
+    assert reply.state == SessionState.HANDOFF
+    assert reply.pending_confirmation is None
+    trace = last_trace(sink)
+    assert Behavior.SAFE_FALLBACK in trace.behaviors
+    assert "offer_without_limit" in trace.rule_ids
