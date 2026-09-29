@@ -150,6 +150,13 @@ def test_usa_la_ultima_fecha_de_corte():
     scores = make_internal_scores(features, seed=3)
     out = build_offers(features, scores, IncomeMultipleBaseline(), POLICY, GENERATED_AT)
     assert len(out) == 4 * len(ProductCode)
+    # El puntaje de cada oferta es el del corte nuevo, no el viejo.
+    newest = scores[scores["snapshot_date"] == pd.Timestamp("2026-06-17")]
+    expected = dict(zip(newest["customer_id"], newest["score"], strict=True))
+    for customer_id, score in zip(out["customer_id"], out["score"], strict=True):
+        assert (pd.isna(score) and pd.isna(expected[customer_id])) or (
+            score == expected[customer_id]
+        )
 
 
 @pytest.fixture
