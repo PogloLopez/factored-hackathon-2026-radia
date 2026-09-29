@@ -57,7 +57,7 @@ def case_of(orch, reply):
 def test_automatico_con_confirmacion_y_verificacion(orch, sink):
     session, [reply] = chat(orch, "C1", "Quiero una tarjeta básica")
     assert reply.state == SessionState.AWAITING_CONFIRMATION
-    assert "450 USD" in reply.reply
+    assert "450.00 USD" in reply.reply
     assert orch.tools.applications.applications == {}
     trace = last_trace(sink)
     assert trace.outcome == Outcome.AWAITING_CONFIRMATION
@@ -400,7 +400,7 @@ def test_monto_en_dolares_no_se_convierte(orch):
 def test_pregunta_por_ingresos_sigue_su_intent(orch, sink):
     _, [reply] = chat(orch, "C1", "¿Qué ingresos necesito para la tarjeta básica?")
     assert reply.handoff_case_id is None
-    assert "450 USD" in reply.reply  # requisitos del nivel automático
+    assert "450.00 USD" in reply.reply  # requisitos del nivel automático
     assert "declared_income_unverified" not in last_trace(sink).rule_ids
 
 
@@ -420,8 +420,8 @@ def test_monto_menor_al_cupo_se_confirma_y_registra(orch, requested):
     session, [reply] = chat(
         orch, "C1", f"Quiero una tarjeta básica de {requested} dólares"
     )
-    assert f"{requested} USD" in reply.reply
-    assert f"{requested} USD" in reply.pending_confirmation.summary
+    assert f"{requested}.00 USD" in reply.reply
+    assert f"{requested}.00 USD" in reply.pending_confirmation.summary
     done = orch.confirm(
         session.session_id, reply.pending_confirmation.confirmation_id, True
     )

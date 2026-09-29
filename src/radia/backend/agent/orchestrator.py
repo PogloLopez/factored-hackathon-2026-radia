@@ -22,6 +22,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
+from decimal import ROUND_DOWN, Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -64,6 +65,8 @@ SESSION_TTL = timedelta(minutes=30)
 # Tras vencer, la sesión se conserva este margen (responde "venció") y luego
 # se expulsa del diccionario para que no crezca sin límite.
 SESSION_EVICT_AFTER = timedelta(minutes=30)
+# Un monto convertido bajo este valor no se ofrece: se pide aclaración.
+MIN_GRANT_USD = 1.0
 GENERIC_PRODUCT = {Language.ES: "crédito", Language.PT: "crédito"}
 GENERIC_PRODUCT[Language.EN] = "credit"
 
@@ -349,6 +352,12 @@ class Orchestrator:
                     rule_id="offer_without_limit",
                     questions=[f"La oferta {offer.offer_id} es automática sin cupo."],
                 )
+            if amount is not None:
+                # Lo que se muestra es lo que se guarda: centavos hacia abajo.
+                amount = _to_cents(amount)
+                if amount < MIN_GRANT_USD:
+                    # Menos de 1 USD no es un pedido creíble: se pide aclarar.
+                    return self._clarify(session, turn)
             if amount is not None and amount > limit:
                 # Pedir más del cupo no se aprueba solo: se negocia o se revisa.
                 within = amount <= (offer.negotiation_max_usd or 0)
@@ -369,7 +378,7 @@ class Orchestrator:
             # Pedir menos del cupo se respeta, también bajo el mínimo de
             # negociación: menos monto es menos exposición que lo aprobado. El
             # mínimo acota la negociación del asesor, no el crédito.
-            granted = amount if amount is not None else limit
+            granted = amount if amount is not None else _to_cents(limit)
             return self._ask_confirmation(session, turn, offer, granted)
 
         if level == AttentionLevel.ANALYST_AND_ADVISOR:
@@ -399,14 +408,14 @@ class Orchestrator:
             offer_id=offer.offer_id,
             product_code=offer.product_code,
             limit_usd=limit,
-            summary=f"{name}: {format_usd(limit)}",
+            summary=f"{name}: {_usd_exact(limit)}",
         )
         session.move_to(SessionState.AWAITING_CONFIRMATION)
         turn.outcome = Outcome.AWAITING_CONFIRMATION
         turn.behaviors.append(Behavior.REQUEST_CONFIRMATION)
         turn.attention_level = AttentionLevel.AUTOMATIC
         return self._say(
-            session, "confirm_request", product=name, limit=format_usd(limit)
+            session, "confirm_request", product=name, limit=_usd_exact(limit)
         )
 
     def _confirm(
@@ -846,6 +855,18 @@ def _money(session: Session, amount: float, in_usd: bool) -> str:
     currency = "USD" if in_usd else (session.currency or "en moneda local")
     digits = ",.0f" if float(amount).is_integer() else ",.2f"
     return f"{amount:{digits}} {currency}"
+
+
+def _to_cents(amount: float) -> float:
+    """Trunca a centavos. Hacia abajo: nunca supera el cupo que ya cumplía."""
+    return float(Decimal(str(amount)).quantize(Decimal("0.01"), ROUND_DOWN))
+
+
+def _usd_exact(amount: float) -> str:
+    """USD con centavos cuando los hay (siempre bajo 1.000): se ve lo que se guarda."""
+    if amount < 1000 or not float(amount).is_integer():
+        return f"{amount:,.2f} USD"
+    return format_usd(amount)
 
 
 def _amount_text(session: Session, u: Understanding) -> str | None:
