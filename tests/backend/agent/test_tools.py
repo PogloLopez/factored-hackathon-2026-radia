@@ -154,3 +154,18 @@ def test_handoff_del_cliente_de_la_sesion(tools):
             request_summary="x",
             policy_decision=other.to_decision(),
         )
+
+
+class LeakyRepository:
+    """Falla con un mensaje que trae datos del cliente."""
+
+    def offers_for(self, customer_id):
+        raise RuntimeError("fallo con ana@mail.com y cédula 1020304050")
+
+
+def test_error_de_tool_no_filtra_el_mensaje(tools):
+    box = ToolBox(LeakyRepository(), clock=tools.clock, wait=wait_none())
+    with pytest.raises(ToolFailed):
+        box.get_active_offers(session(), "C1")
+    call = box.drain_calls()[0]
+    assert call.error == "RuntimeError"
