@@ -108,3 +108,38 @@ def test_reporte_json_y_silver_idempotente(built):
 def test_silver_sin_bronze_falla_claro(raw_settings):
     with pytest.raises(FileNotFoundError, match="Bronze"):
         build_silver(TABLES["customers"], raw_settings)
+
+
+def _rewrite_bronze(settings, table, select_sql):
+    """Reescribe el Bronze de una tabla con un SELECT sobre sí mismo."""
+    from radia.etl.bronze import bronze_path
+
+    path = bronze_path(settings, table)
+    tmp = path.with_suffix(".rewrite.parquet")
+    duckdb.sql(
+        f"COPY ({select_sql.format(src=f'read_parquet({sql_literal(path)})')}) "
+        f"TO {sql_literal(tmp)} (FORMAT parquet)"
+    )
+    tmp.replace(path)
+
+
+def test_bronze_sin_pk_falla_y_no_pisa_silver(built):
+    settings, _ = built
+    before = silver_path(settings, "customers").read_bytes()
+    _rewrite_bronze(settings, "customers", "SELECT * EXCLUDE (customer_id) FROM {src}")
+    with pytest.raises(ValueError, match="PK"):
+        build_silver(TABLES["customers"], settings)
+    assert silver_path(settings, "customers").read_bytes() == before
+
+
+def test_bronze_sin_filas_validas_no_pisa_silver(built):
+    settings, _ = built
+    before = silver_path(settings, "customers").read_bytes()
+    _rewrite_bronze(
+        settings,
+        "customers",
+        "SELECT * REPLACE (NULL::VARCHAR AS customer_id) FROM {src}",
+    )
+    with pytest.raises(ValueError, match="0 válidas"):
+        build_silver(TABLES["customers"], settings)
+    assert silver_path(settings, "customers").read_bytes() == before
