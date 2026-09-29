@@ -9,8 +9,9 @@ Productor: orquestador. Consumidores: bandeja del analista y consola del asesor.
 - Sin datos de contacto ni documento: el humano los consulta en el core.
 - Un caso puede traer una decisión automática: si una tool falla al
   ejecutarla, el fallback seguro es escalar con esa decisión adjunta.
-- En un fallback puede no haber hechos verificados. Entonces el caso exige
-  preguntas abiertas, para que el humano sepa qué falta.
+- En un fallback puede no haber hechos verificados ni decisión de política
+  (p. ej. política caída). Entonces el caso exige preguntas abiertas, para que
+  el humano sepa qué falta. Nunca se inventa una decisión para poder escalar.
 """
 
 from enum import StrEnum
@@ -54,15 +55,19 @@ class HandoffCase(BaseModel):
     verified_facts: list[str] = Field(default_factory=list)
     # Puntos por componente del puntaje interno (C3).
     score_breakdown: dict[str, float] = Field(default_factory=dict)
-    policy_decision: PolicyDecision
+    policy_decision: PolicyDecision | None = None
     actions_taken: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     created_at: AwareDatetime
 
     @model_validator(mode="after")
     def check_decision_matches(self) -> Self:
-        if self.policy_decision.customer_id != self.customer_id:
+        decision = self.policy_decision
+        if decision is not None and decision.customer_id != self.customer_id:
             raise ValueError("policy_decision no corresponde al cliente del caso")
-        if not self.verified_facts and not self.open_questions:
-            raise ValueError("sin hechos verificados, el caso exige preguntas abiertas")
+        incomplete = not self.verified_facts or decision is None
+        if incomplete and not self.open_questions:
+            raise ValueError(
+                "sin hechos verificados o sin decisión, el caso exige preguntas abiertas"
+            )
         return self
