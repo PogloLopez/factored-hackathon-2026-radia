@@ -1,7 +1,8 @@
 """C3. Puntaje interno determinístico de 150 a 950 por cliente.
 
 Productor: ETL. Consumidores: política (C7) y bandeja del analista.
-Las bandas no viven aquí: sus umbrales son de la política.
+Las bandas y las exclusiones (inactivo, suspendido, mora >30 días) no viven
+aquí: son reglas de la política. Este puntaje se calcula igual para todos.
 """
 
 import json
@@ -19,9 +20,14 @@ SCORE_MIN = 150
 SCORE_MAX = 950
 
 
+def _reject_constant(name: str) -> None:
+    raise ValueError(f"constante no permitida en el desglose: {name}")
+
+
 def _is_breakdown(raw: str) -> bool:
     try:
-        parsed = json.loads(raw)
+        # NaN e Infinity no son puntos válidos, aunque json.loads los acepte.
+        parsed = json.loads(raw, parse_constant=_reject_constant)
     except (TypeError, ValueError):
         return False
     return isinstance(parsed, dict) and all(
