@@ -19,7 +19,7 @@ PROTECTED = {"main", "develop"}
 ENV_IN_TEXT = re.compile(r"(?<![\w.-])\.env(?!\.example)(\.[\w-]+)?(?![\w.-])")
 # aws o aws.exe (con ruta o comillas), opciones globales y luego s3 o s3api.
 AWS_S3_CLI = re.compile(
-    r"""(?:^|[\s&|;({"'\\/])aws(?:\.exe)?["']?"""
+    r"""(?:^|[\s&|;({"'\\/])aws(?:\.exe|\.cmd)?["']?"""
     r"""(?:\s+--?[\w-]+(?:[ =](?!s3(?:api)?\b)\S+)?)*\s+s3(?:api)?\b""",
     re.IGNORECASE,
 )
@@ -112,13 +112,18 @@ def ruff_autofix(all_tracked: bool, pathspecs: list[str] | None = None) -> None:
 # Separadores de comandos en Bash y PowerShell: && || | & ; saltos de línea,
 # bloques { } y subexpresiones ( ).
 CMD_SEPARATORS = re.compile(r"&&|\|\||[|&;\n\r{}()]")
+# Dentro de comillas los separadores son texto (p. ej. "feat(etl): ..."), no cortan.
+QUOTED = re.compile(r""""[^"\n]*"|'[^'\n]*'""")
+SEPARATOR_CHARS = re.compile(r"[|&;(){}]")
 # Continuación de línea: `\` en Bash y backtick en PowerShell.
 LINE_CONTINUATION = re.compile(r"[\\`]\r?\n")
+# Redirecciones como `> out.txt` o `2>`, que no son argumentos de git.
+REDIRECTION = re.compile(r"\d*>>?\s*\S*|<\s*\S*")
 # git o git.exe, con ruta opcional y con o sin comillas, opciones globales
 # (con valor tras espacio o "=", entre comillas o no) y el subcomando.
-# Análisis textual de mejor esfuerzo. Límites conocidos: un -a después de un
-# mensaje con paréntesis no se ve, opciones de push con valor separado
-# cuentan como posicionales, y prefijos como `FOO=1 git` o `env git` no se detectan. La garantía dura es la protección de rama en GitHub.
+# Análisis textual de mejor esfuerzo. Límites conocidos: opciones de push con
+# valor separado cuentan como posicionales, y prefijos como `FOO=1 git` o
+# `env git` no se detectan. La garantía dura es la protección de rama en GitHub.
 _VALUE = r"""(?:"[^"]*"|'[^']*'|\S+)"""
 _GIT_BIN = (
     r"""(?:"(?:[^"]*[\\/])?git(?:\.exe)?"|'(?:[^']*[\\/])?git(?:\.exe)?'"""
@@ -128,7 +133,7 @@ GIT_CMD = re.compile(
     rf"""^{_GIT_BIN}"""
     rf"""((?:\s+(?:(?:-C|-c|--git-dir|--work-tree|--namespace)\s+{_VALUE}"""
     rf"""|--?[\w-]+(?:={_VALUE})?))*)"""
-    r"""\s+(add|push|merge|commit)\b(.*)$""",
+    r"""\s+(add|push|merge|commit)(?![\w-])(.*)$""",
     re.IGNORECASE,
 )
 
@@ -136,6 +141,7 @@ GIT_CMD = re.compile(
 def git_subcommands(cmd: str) -> list[tuple[str, str]]:
     """Devuelve (subcomando, argumentos) de cada git add/push/merge/commit del comando."""
     cmd = LINE_CONTINUATION.sub(" ", cmd)
+    cmd = QUOTED.sub(lambda m: SEPARATOR_CHARS.sub(" ", m.group()), cmd)
     found = []
     for part in CMD_SEPARATORS.split(cmd):
         match = GIT_CMD.match(part.strip().lstrip("$ "))
@@ -173,10 +179,15 @@ def check_bash(cmd: str) -> None:
         if sub == "add":
             staged_in_cmd += add_pathspecs(args)
         if sub == "push":
+            args = REDIRECTION.sub(" ", args)
             tokens = re.findall(r"[\w./-]+", args)
             targets = {t.removeprefix("refs/heads/") for t in tokens} & PROTECTED
             positional = [a for a in args.split() if not a.startswith("-")]
-            if targets or (branch in PROTECTED and len(positional) <= 1):
+            # HEAD o @ como destino empujan la rama actual.
+            to_current = any(r.split(":")[-1] in {"HEAD", "@"} for r in positional[1:])
+            if targets or (
+                branch in PROTECTED and (len(positional) <= 1 or to_current)
+            ):
                 block("push directo a main/develop. Abre un PR desde tu rama.")
         if sub == "merge" and branch in PROTECTED:
             block(f"merge directo sobre {branch}. Se integra por PR.")
