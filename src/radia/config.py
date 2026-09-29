@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # Factored y compartido por todos los equipos.
     s3_max_concurrency: int = Field(default=4, ge=1, le=8)
 
+    # LLM del orquestador. Sin llave se usa el modelo falso (sin gasto).
+    groq_api_key: SecretStr | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
+
     @property
     def raw_dir(self) -> Path:
         return self.data_dir / "raw"
@@ -45,6 +49,10 @@ class Settings(BaseSettings):
     @property
     def manifest_dir(self) -> Path:
         return self.data_dir / "manifest"
+
+    @property
+    def traces_dir(self) -> Path:
+        return self.data_dir / "traces"
 
 
 @lru_cache
