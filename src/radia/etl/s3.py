@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING
 
 import boto3
 from boto3.s3.transfer import TransferConfig
-from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import AwareDatetime, BaseModel, Field
 
 from radia.config import CREDIT_TABLES, Settings
@@ -189,12 +188,19 @@ def download(
         for future in as_completed(futures):
             try:
                 entry = future.result()
-            except (BotoCoreError, ClientError, OSError, ValueError) as exc:
+            # Cualquier falla (incluido RetriesExceededError de boto3) se anota y
+            # se relanza al final: primero se guardan todos los éxitos.
+            except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
                 continue
             state[entry.key] = entry.etag
-            _save_state(raw_dir, state)
             done.append(entry)
+            try:
+                _save_state(raw_dir, state)
+            except OSError as exc:  # p. ej. antivirus con el archivo abierto
+                errors.append(exc)
+    # Último guardado con todo lo logrado, por si alguno intermedio falló.
+    _save_state(raw_dir, state)
     if errors:
         raise errors[0]
     return done
