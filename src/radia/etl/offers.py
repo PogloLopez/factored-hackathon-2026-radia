@@ -157,17 +157,18 @@ def _read(path: Path, what: str) -> pd.DataFrame:
 
 def read_parquet(path: Path) -> pd.DataFrame:
     """Lee un parquet con DuckDB (el proyecto no depende de pyarrow)."""
-    return duckdb.connect().execute(f"SELECT * FROM {sql_literal(path)}").df()
+    # Context manager: en Windows una conexión abierta bloquea el archivo.
+    with duckdb.connect() as con:
+        return con.execute(f"SELECT * FROM {sql_literal(path)}").df()
 
 
 def write_parquet(df: pd.DataFrame, path: Path) -> None:
     """Escribe un parquet con DuckDB. Reemplazo atómico, como en Bronze."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".parquet.tmp")
-    con = duckdb.connect()
-    con.register("frame", df)
-    con.execute(f"COPY frame TO {sql_literal(tmp)} (FORMAT parquet)")
-    con.close()
+    with duckdb.connect() as con:
+        con.register("frame", df)
+        con.execute(f"COPY frame TO {sql_literal(tmp)} (FORMAT parquet)")
     tmp.replace(path)
 
 
