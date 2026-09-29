@@ -25,7 +25,7 @@ Since everyone is junior, prefer explaining *why* over assuming familiarity, kee
 @.claude/rules/conventions.md
 @.claude/rules/docs.md
 
-Agents in `.claude/agents/`: `reviewer` and `tester` (sonnet). Run both after every commit, scoped to that commit only. Hooks in `.claude/settings.json` block `.env` access, direct commit/merge/push to `main`/`develop`, and commits that fail ruff.
+Agents in `.claude/agents/`: `reviewer` and `tester` (sonnet). Run both after every commit, scoped to that commit only. Hooks in `.claude/settings.json` (Bash and PowerShell) block `.env` access, direct commit/merge/push to `main`/`develop`, the AWS CLI on S3 (S3 only through `radia.etl` with an approved manifest), and commits that fail ruff. Working solo: PRs merge on automated gates and human checkpoints, see `.claude/rules/git.md`.
 
 ## Obsidian `[[link]]` convention
 
