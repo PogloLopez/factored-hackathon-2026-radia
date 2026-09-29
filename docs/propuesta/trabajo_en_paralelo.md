@@ -111,6 +111,13 @@ Aparece durante el `git rebase`. Lo resuelve quien abre el PR, commit por commit
 
 ## Catálogo de contratos
 
+> **Los contratos ya están en código** (`src/radia/contracts/`, ver su README). Los borradores de esta guía quedan como historia del diseño. Si difieren, manda el código. Cambios principales:
+> - El baseline de cupo vive en `radia.ml`, no en el contrato.
+> - `current_days_past_due` pasa a `max_days_past_due`.
+> - Las bandas y las exclusiones son de la política, no del puntaje.
+> - Los mocks viven junto a cada contrato de tabla.
+> - El expediente exige `session_id` y `created_at` con zona horaria.
+
 | ID | Contrato y archivo | Productor | Consumidor | Sustituto mientras tanto | Llega lo real |
 | --- | --- | --- | --- | --- | --- |
 | C1 | Features Gold por cliente. `src/radia/contracts/data/gold_features.py` | Pablo | Isabella, puntaje | Generador de mocks que cumpla el contrato, más EDA directo sobre S3 | D3 |
