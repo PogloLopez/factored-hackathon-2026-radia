@@ -72,8 +72,10 @@
       okBox.hidden = true;
       const raw = amountInput.value.trim();
       const amount = raw === "" ? null : Number(raw);
-      if (raw !== "" && !Number.isFinite(amount)) {
-        Radia.showError(errorBox, "El monto debe ser un número.");
+      // Con texto no numérico (p. ej. "12500,50") el navegador deja value en ""
+      // y marca badInput: sin este chequeo el monto se perdería sin aviso.
+      if (amountInput.validity.badInput || (raw !== "" && !Number.isFinite(amount))) {
+        Radia.showError(errorBox, "El monto debe ser un número (usa punto decimal, p. ej. 12500.50).");
         amountInput.focus();
         return;
       }
