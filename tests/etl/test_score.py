@@ -163,6 +163,11 @@ VALID_COMPONENT = """
         # falta un campo
         "score_version: v\nbase: 150\ncomponents:\n  a:\n"
         + VALID_COMPONENT.replace("    missing_points: 0\n", ""),
+        # rango teórico sobre 950: 600 + 400
+        "score_version: v\nbase: 600\ncomponents:\n  a:\n" + VALID_COMPONENT,
+        # rango teórico bajo 150 por missing_points: 150 - 10
+        "score_version: v\nbase: 150\ncomponents:\n  a:\n"
+        + VALID_COMPONENT.replace("missing_points: 0", "missing_points: -10"),
     ],
 )
 def test_yaml_invalido_falla(content):
@@ -201,3 +206,31 @@ def test_deuda_discrimina_con_hipotecas_y_prestamos(weights):
     assert pts[1] > pts[2] > pts[3] > pts[4]
     assert pts[1] > debt.points_high
     assert pts[4] == pts[5] == debt.points_high
+
+
+def test_rango_teorico_de_v0_es_la_escala_sin_recorte(weights):
+    assert weights.theoretical_range == (SCORE_MIN, SCORE_MAX)
+    # El mejor perfil llega a 950 sin recorte: la suma bruta es exactamente 950.
+    best = compute_scores(_customer(), weights)
+    assert sum(json.loads(best["breakdown_json"].iloc[0]).values()) == SCORE_MAX
+
+
+def test_rango_teorico_en_el_borde_es_valido():
+    raw = {
+        "score_version": "v",
+        "base": 550,
+        "components": {
+            "a": {
+                "feature": "credit_score",
+                "x_low": 300,
+                "x_high": 850,
+                "points_low": -400,
+                "points_high": 400,
+                "missing_points": 0,
+            }
+        },
+    }
+    assert ScoreWeights.model_validate(raw).theoretical_range == (150, 950)
+    raw["base"] = 551
+    with pytest.raises(ValidationError, match="rango teórico"):
+        ScoreWeights.model_validate(raw)
