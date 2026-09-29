@@ -1,0 +1,110 @@
+"""Tests de la capa Silver y su reporte de calidad (raw sintético del conftest)."""
+
+import json
+from decimal import Decimal
+
+import duckdb
+import pytest
+
+from radia.etl.bronze import build_bronze, sql_literal
+from radia.etl.silver import QualityReport, build_silver, report_path, silver_path
+from radia.etl.tables import TABLES
+
+
+@pytest.fixture
+def built(raw_settings):
+    """Bronze y Silver de todas las tablas, en orden de construcción."""
+    reports = {}
+    for spec in TABLES.values():
+        build_bronze(spec, raw_settings)
+        reports[spec.name] = build_silver(spec, raw_settings)
+    return raw_settings, reports
+
+
+def _rows(settings, table, cols):
+    path = sql_literal(silver_path(settings, table))
+    return duckdb.sql(f"SELECT {cols} FROM read_parquet({path}) ORDER BY 1").fetchall()
+
+
+def test_customers_dedup_version_y_casteo(built):
+    settings, reports = built
+    r = reports["customers"]
+    assert (r.rows_in, r.rows_out) == (6, 3)
+    assert r.null_pk_removed == 1
+    assert r.exact_duplicates_removed == 1
+    assert r.stale_versions_removed == 1
+    assert r.cast_failures["credit_score"] == 2
+    assert r.cast_failures["last_updated"] == 0
+    rows = _rows(settings, "customers", "customer_id, first_name, credit_score")
+    # C1: gana la versión más reciente. C2: 'abc' queda NULL. C3: '' queda NULL.
+    assert rows == [("C1", "Ana", 710), ("C2", "Luis", None), ("C3", None, None)]
+    assert r.null_rate["credit_score"] == pytest.approx(2 / 3)
+    assert r.null_rate["customer_id"] == 0
+    assert "document_number" in r.missing_columns
+    assert r.null_rate["document_number"] == 1.0
+
+
+def test_tipos_de_silver_siguen_la_spec(built):
+    settings, _ = built
+    path = sql_literal(silver_path(settings, "customers"))
+    described = duckdb.sql(f"DESCRIBE SELECT * FROM read_parquet({path})").fetchall()
+    types = {r[0]: r[1] for r in described}
+    assert types["credit_score"] == "INTEGER"
+    assert types["last_updated"] == "TIMESTAMP"
+    assert types["accepts_marketing"] == "BOOLEAN"
+    assert types["estimated_monthly_income"] == "DECIMAL(12,2)"
+
+
+def test_transactions_reproceso_particion_tardia_y_esquema(built):
+    settings, reports = built
+    r = reports["transactions"]
+    assert (r.rows_in, r.rows_out) == (6, 5)
+    assert r.stale_versions_removed == 1
+    assert r.unexpected_columns == ["channel_v2"]
+    rows = _rows(settings, "transactions", "transaction_id, amount")
+    assert rows == [
+        ("T1", Decimal("10.00")),
+        ("T2", Decimal("6.00")),  # gana el reproceso del día 3
+        ("T3", Decimal("7.00")),
+        ("T4", Decimal("3.00")),  # la partición tardía entra igual
+        ("T5", Decimal("1.00")),
+    ]
+
+
+def test_huerfanos_por_fk(built):
+    _, reports = built
+    assert reports["products"].orphans == {"customer_id->customers.customer_id": 1}
+    assert reports["transactions"].orphans == {
+        "customer_id->customers.customer_id": 1,
+        "product_id->products.product_id": 1,
+    }
+    assert reports["daily_exchange_rates"].orphans == {}
+
+
+def test_huerfanos_sin_dimension_quedan_en_none(raw_settings):
+    spec = TABLES["products"]
+    build_bronze(spec, raw_settings)
+    r = build_silver(spec, raw_settings)
+    assert r.orphans == {"customer_id->customers.customer_id": None}
+
+
+def test_exchange_rates_pk_compuesta_sin_columna_de_orden(built):
+    settings, reports = built
+    r = reports["daily_exchange_rates"]
+    assert (r.rows_in, r.rows_out, r.exact_duplicates_removed) == (3, 2, 1)
+    rows = _rows(settings, "daily_exchange_rates", "date, exchange_rate")
+    assert [str(row[0]) for row in rows] == ["2026-01-01", "2026-01-02"]
+
+
+def test_reporte_json_y_silver_idempotente(built):
+    settings, reports = built
+    saved = json.loads(report_path(settings, "customers").read_text(encoding="utf-8"))
+    assert QualityReport.model_validate(saved).rows_out == reports["customers"].rows_out
+    again = build_silver(TABLES["customers"], settings)
+    assert again.rows_out == reports["customers"].rows_out
+    assert not list(silver_path(settings, "customers").parent.glob("*.tmp"))
+
+
+def test_silver_sin_bronze_falla_claro(raw_settings):
+    with pytest.raises(FileNotFoundError, match="Bronze"):
+        build_silver(TABLES["customers"], raw_settings)
