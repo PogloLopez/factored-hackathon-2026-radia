@@ -131,3 +131,40 @@ def test_credenciales_incompletas_fallan():
     settings = Settings(_env_file=None, aws_access_key_id="solo-la-clave")
     with pytest.raises(ValueError):
         s3.make_client(settings)
+
+
+def test_error_no_tipado_de_boto3_tambien_guarda_exitos(
+    client, tmpdir_path, monkeypatch
+):
+    from boto3.exceptions import RetriesExceededError
+
+    m = s3.build_manifest(client, BUCKET, "data/", ("customers", "transactions"))
+    real = client.download_file
+    bad = "data/transactions/year=2026/month=06/day=17/part-0.csv"
+
+    def flaky(bucket, key, filename, **kw):
+        if key == bad:
+            raise RetriesExceededError(OSError("stream"))
+        return real(bucket, key, filename, **kw)
+
+    monkeypatch.setattr(client, "download_file", flaky)
+    with pytest.raises(RetriesExceededError):
+        s3.download(client, m, tmpdir_path, max_concurrency=2)
+    assert [e.key for e in s3.pending_entries(m, tmpdir_path)] == [bad]
+
+
+def test_falla_al_guardar_estado_no_corta_el_bucle(client, tmpdir_path, monkeypatch):
+    m = s3.build_manifest(client, BUCKET, "data/", ("customers", "transactions"))
+    real_save = s3._save_state
+    calls = {"n": 0}
+
+    def flaky_save(raw_dir, state):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError("archivo bloqueado")
+        return real_save(raw_dir, state)
+
+    monkeypatch.setattr(s3, "_save_state", flaky_save)
+    with pytest.raises(PermissionError):
+        s3.download(client, m, tmpdir_path, max_concurrency=2)
+    assert s3.pending_entries(m, tmpdir_path) == []
