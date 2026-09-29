@@ -18,6 +18,7 @@ Flujo de un turno (ver [[propuesta]], secciones 3 y 6):
 Cada turno (mensaje o confirmación) deja un `TurnTrace` (C11) en el sink.
 """
 
+import threading
 import time
 import uuid
 from collections.abc import Callable, Sequence
@@ -181,6 +182,8 @@ class Orchestrator:
         self.session_ttl = session_ttl
         self.evict_after = evict_after
         self.sessions: dict[str, Session] = {}
+        # Protege el diccionario: la API atiende peticiones en varios hilos.
+        self._sessions_lock = threading.Lock()
 
     # --- API pública ---------------------------------------------------------
 
@@ -206,7 +209,8 @@ class Orchestrator:
             currency=currency,
             usd_per_unit=usd_per_unit,
         )
-        self.sessions[session.session_id] = session
+        with self._sessions_lock:
+            self.sessions[session.session_id] = session
         return session
 
     def handle_message(self, session_id: str, message: str) -> ChatReply:
@@ -793,17 +797,19 @@ class Orchestrator:
         las sesiones: suficiente para el volumen de la demo.
         """
         cutoff = self.clock() - self.evict_after
-        for session_id in [
-            sid for sid, s in self.sessions.items() if s.expires_at < cutoff
-        ]:
-            del self.sessions[session_id]
+        with self._sessions_lock:
+            # Sobre una copia: otro hilo puede haber agregado o expulsado.
+            for session_id, session in list(self.sessions.items()):
+                if session.expires_at < cutoff:
+                    self.sessions.pop(session_id, None)
 
     def _session(self, session_id: str) -> Session:
         self._evict_expired()
-        try:
-            return self.sessions[session_id]
-        except KeyError:
-            raise UnknownSession(session_id) from None
+        with self._sessions_lock:
+            session = self.sessions.get(session_id)
+        if session is None:
+            raise UnknownSession(session_id)
+        return session
 
     def _load_offers(self, session: Session, turn: _Turn) -> list[Offer] | None:
         """Ofertas vigentes. `None` si la fuente falló o todo está vencido."""
