@@ -351,6 +351,15 @@ class Orchestrator:
                     f"sugiere {suggested}."
                 )
         if level == AttentionLevel.AUTOMATIC:
+            existing = self._existing_application(session, turn, offer)
+            if existing is not None:
+                # Una solicitud por oferta: no se pide confirmar un duplicado.
+                return self._say(
+                    session,
+                    "application_exists",
+                    product=product_name(product, session.language),
+                    reference=existing.reference,
+                )
             limit = offer.offered_limit_usd
             if limit is None or limit <= 0:
                 # Automático sin cupo: no hay qué confirmar. Lo revisa un analista.
@@ -491,6 +500,18 @@ class Orchestrator:
             product=product_name(product, session.language),
             reference=application.reference,
         )
+
+    def _existing_application(
+        self, session: Session, turn: _Turn, offer: Offer
+    ) -> Application | None:
+        """Solicitud ya registrada para la oferta. Si la tool cae, `None`: la
+        tool de creación igual deniega el duplicado."""
+        try:
+            return self.tools.find_application(
+                session, offer.offer_id, calls=turn.calls
+            )
+        except (ToolFailed, ToolDenied):
+            return None
 
     def _verify(
         self, session: Session, turn: _Turn, application: Application, offer: Offer

@@ -155,6 +155,14 @@ TEMPLATES: dict[str, dict[Language, str]] = {
         PT: "Pronto. Seu pedido de {product} foi registrado com o número {reference}.",
         EN: "Done. Your {product} application was registered as {reference}.",
     },
+    "application_exists": {
+        ES: "Ya tienes una solicitud de {product} registrada con el número "
+        "{reference}. No se creó otra.",
+        PT: "Você já tem um pedido de {product} registrado com o número "
+        "{reference}. Nenhum outro foi criado.",
+        EN: "You already have a {product} application registered as "
+        "{reference}. No new one was created.",
+    },
     "application_cancelled": {
         ES: "Entendido, no se solicitó nada.",
         PT: "Entendido, nada foi solicitado.",
@@ -755,6 +763,7 @@ VERBATIM_TEMPLATES = frozenset(
         "confirm_request",
         "nothing_pending",
         "application_created",
+        "application_exists",
         "application_cancelled",
         "handoff_analyst",
         "handoff_advisor",
