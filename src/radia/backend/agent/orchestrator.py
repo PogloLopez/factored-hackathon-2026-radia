@@ -16,6 +16,7 @@ Flujo de un turno (ver [[propuesta]], secciones 3 y 6):
 8. Falla o datos vencidos: fallback seguro. Nunca se inventa una oferta.
 
 Cada turno (mensaje o confirmación) deja un `TurnTrace` (C11) en el sink.
+Los turnos de una misma sesión se serializan con su lock.
 """
 
 import threading
@@ -214,7 +215,13 @@ class Orchestrator:
         return session
 
     def handle_message(self, session_id: str, message: str) -> ChatReply:
+        # El lock del diccionario solo se toma para buscar la sesión y se
+        # suelta. Luego el de la sesión cubre el turno entero: sin deadlocks.
         session = self._session(session_id)
+        with session.lock:
+            return self._handle_message(session, message)
+
+    def _handle_message(self, session: Session, message: str) -> ChatReply:
         started = time.perf_counter()
         if not session.is_active(self.clock()):
             turn = _Turn(intent="session_expired", outcome=Outcome.REFUSED)
@@ -241,8 +248,18 @@ class Orchestrator:
         return self._finish(session, turn, text, started)
 
     def confirm(self, session_id: str, confirmation_id: str, accept: bool) -> ChatReply:
-        """Botón Sí o No del cliente. Es la única vía para ejecutar una acción."""
+        """Botón Sí o No del cliente. Es la única vía para ejecutar una acción.
+
+        Dos clics simultáneos se serializan con el lock de la sesión: el
+        segundo ve la confirmación ya consumida.
+        """
         session = self._session(session_id)
+        with session.lock:
+            return self._confirm_turn(session, confirmation_id, accept)
+
+    def _confirm_turn(
+        self, session: Session, confirmation_id: str, accept: bool
+    ) -> ChatReply:
         started = time.perf_counter()
         turn = _Turn(intent="confirm")
         if not session.is_active(self.clock()):

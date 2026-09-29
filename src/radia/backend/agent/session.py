@@ -7,13 +7,16 @@
   vienen en moneda local y se convierten antes de compararlos con cupos en USD.
 - La confirmación pendiente vive en la sesión. La tool de solicitudes la exige
   aceptada, así que sin confirmación explícita no hay acción.
+- Cada sesión trae su lock: el orquestador lo toma durante todo un turno
+  (mensaje o confirmación) para que validar y cambiar el estado sea atómico.
 """
 
+import threading
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PrivateAttr
 
 from radia.backend.agent.llm import ChatMessage
 from radia.contracts.common import ProductCode
@@ -95,6 +98,12 @@ class Session(BaseModel):
     currency: Currency | None = None
     # USD por unidad de moneda local. Sin tasa, un monto local no enruta.
     usd_per_unit: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    # Serializa los turnos de esta sesión. Privado: no se valida ni se exporta.
+    _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+
+    @property
+    def lock(self) -> threading.Lock:
+        return self._lock
 
     def is_active(self, now: datetime) -> bool:
         return now < self.expires_at
