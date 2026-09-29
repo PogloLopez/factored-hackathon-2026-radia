@@ -29,7 +29,7 @@ decision = RulesPolicy().decide(policy_input)
 
 Orden de las reglas:
 
-1. Exclusiones: cliente no activo o mora vigente > 30 días. No elegible, final.
+1. Exclusiones: cliente no activo o mora vigente > 30 días. No elegible y sin cupo. Si pide humano o disputa, va al asesor (sin cupo).
 2. Exposición: la del producto. Un monto pedido sobre el tope la sube un nivel. Nunca la baja.
 3. Nivel base: matriz banda × exposición. Sin puntaje, analista (`missing_data`).
 4. Excepciones: al analista (ingreso nulo, zona gris, ingreso declarado distinto, riesgo alto) y al asesor (pide humano, disputa, Premium con exposición media o alta). Solo suben el nivel.

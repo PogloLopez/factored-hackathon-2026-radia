@@ -77,11 +77,15 @@ class RulesPolicy:
                 **extra,
             )
 
-        # 1. Exclusiones. Final: ninguna excepción la cambia.
+        # 1. Exclusiones. La decisión de riesgo es final (nunca hay cupo), pero
+        # pedir humano o disputar siempre llega al asesor (propuesta, sección 4).
         exclusion_reasons = self._exclusion_reasons(inp)
         if exclusion_reasons:
             reasons[:0] = exclusion_reasons
-            alerts.extend(advisor_reasons)  # que el orquestador sepa lo que pidió
+            human = [r for r in advisor_reasons if r in _HUMAN_REQUESTS]
+            if human:
+                reasons.extend(human)
+                return build(AttentionLevel.ADVISOR)
             return build(AttentionLevel.NOT_ELIGIBLE)
 
         # 2 y 3. Nivel base.
@@ -99,7 +103,9 @@ class RulesPolicy:
         # para que el asesor las vea. El trato preferencial no cambia la decisión
         # de riesgo (propuesta, sección 4), así que no rescata un no elegible.
         if base == AttentionLevel.NOT_ELIGIBLE:
-            alternative = self._alternative(band, exposure) if band else None
+            alternative = (
+                self._alternative(band, exposure, req.product_code) if band else None
+            )
             advisor_reasons = [
                 r for r in advisor_reasons if r != "preferential_segment_exposure"
             ]
@@ -180,8 +186,14 @@ class RulesPolicy:
             found.append("preferential_segment_exposure")
         return found
 
-    def _alternative(self, band: Band, exposure: Exposure) -> ProductCode | None:
-        """Producto de menor exposición que la matriz permite para la banda."""
+    def _alternative(
+        self, band: Band, exposure: Exposure, requested: ProductCode
+    ) -> ProductCode | None:
+        """Producto de menor exposición que la matriz permite para la banda.
+
+        Nunca el mismo producto pedido: si el monto subió la exposición, el
+        producto base puede caer bajo el filtro y la sugerencia sería absurda.
+        """
         rank = EXPOSURE_ORDER.index
         candidates = [
             (
@@ -191,10 +203,14 @@ class RulesPolicy:
                 code,
             )
             for code, rule in self.rules.products.items()
-            if rank(rule.exposure) < rank(exposure)
+            if code != requested
+            and rank(rule.exposure) < rank(exposure)
             and self.rules.matrix[band][rule.exposure] != AttentionLevel.NOT_ELIGIBLE
         ]
         return min(candidates)[-1] if candidates else None
+
+
+_HUMAN_REQUESTS = frozenset({"customer_requests_human", "customer_disputes_rejection"})
 
 
 def _raise_exposure(exposure: Exposure) -> Exposure:
