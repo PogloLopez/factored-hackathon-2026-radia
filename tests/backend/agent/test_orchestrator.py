@@ -5,6 +5,8 @@ Todo con `FakeLanguageModel` y ofertas mock que cumplen C6 (ver conftest).
 """
 
 import json
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -658,3 +660,38 @@ def test_sesiones_concurrentes_no_rompen_la_expulsion(tools, sink):
     assert set(new) == set(orch.sessions)
     with pytest.raises(UnknownSession):
         orch.handle_message(old[0], "hola")
+
+
+class SlowApplicationStore(InMemoryApplicationStore):
+    """Alta lenta: abre la ventana para que dos clics se crucen."""
+
+    def create(self, application):
+        time.sleep(0.05)
+        return super().create(application)
+
+
+def test_dos_confirmaciones_simultaneas_crean_una_solicitud(tools, sink, offers_df):
+    box = ToolBox(
+        InMemoryOfferRepository(offers_df),
+        SlowApplicationStore(),
+        clock=tools.clock,
+        wait=wait_none(),
+    )
+    orch = Orchestrator(FakeLanguageModel(), box, sink, clock=tools.clock)
+    session, [reply] = chat(orch, "C1", "Quiero una tarjeta básica")
+    conf = reply.pending_confirmation.confirmation_id
+    barrier = threading.Barrier(2)
+
+    def click(_):
+        barrier.wait()
+        return orch.confirm(session.session_id, conf, accept=True)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(click, range(2)))
+    assert len(box.applications.applications) == 1
+    outcomes = sorted(t.outcome for t in sink.traces[-2:])
+    assert outcomes == sorted([Outcome.ACTION_COMPLETED, Outcome.REFUSED])
+    assert sum(r.application_reference is not None for r in replies) == 1
+    # Estado consistente: solicitud hecha, nada pendiente y sin handoff.
+    assert session.state == SessionState.DONE and session.pending is None
+    assert box.cases.cases == {}
