@@ -6,6 +6,13 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
 
+[build-system]
+requires = ["uv_build>=0.8.14,<0.9"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "radia"
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
