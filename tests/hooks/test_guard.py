@@ -23,11 +23,14 @@ guard = _load_guard()
 @pytest.fixture
 def env(monkeypatch):
     """Rama simulada y registro de llamadas a ruff_autofix."""
-    state = {"branch": "feat/x", "ruff": []}
+    state = {"branch": "feat/x", "ruff": [], "paths": []}
+
+    def fake_ruff_autofix(all_tracked, pathspecs=None):
+        state["ruff"].append(all_tracked)
+        state["paths"].append(pathspecs or [])
+
     monkeypatch.setattr(guard, "current_branch", lambda: state["branch"])
-    monkeypatch.setattr(
-        guard, "ruff_autofix", lambda all_tracked: state["ruff"].append(all_tracked)
-    )
+    monkeypatch.setattr(guard, "ruff_autofix", fake_ruff_autofix)
     return state
 
 
@@ -145,6 +148,26 @@ def test_commit_con_all_pasa_all_tracked(env):
     guard.check_bash('git commit -am "x"')
     guard.check_bash('git commit --all -m "x"')
     assert env["ruff"] == [True, True]
+
+
+def test_add_en_el_mismo_comando_pasa_pathspecs(env):
+    guard.check_bash('git add a.py "dir con espacio/b.py" && git commit -m "x"')
+    assert env["paths"] == [["a.py", "dir con espacio/b.py"]]
+
+
+def test_add_all_sin_rutas_equivale_a_todo(env):
+    guard.check_bash('git add -A; git commit -m "x"')
+    assert env["paths"] == [["."]]
+
+
+def test_commit_sin_add_no_pasa_pathspecs(env):
+    guard.check_bash('git commit -m "x"')
+    assert env["paths"] == [[]]
+
+
+def test_add_sin_commit_no_llama_ruff(env):
+    guard.check_bash("git add a.py")
+    assert env["ruff"] == []
 
 
 # ---------- check_bash: secretos ----------

@@ -10,6 +10,7 @@
 
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import PurePath
@@ -54,11 +55,26 @@ def git_lines(*args: str) -> list[str]:
     return [line for line in out.stdout.splitlines() if line]
 
 
-def ruff_autofix(all_tracked: bool) -> None:
-    """Corrige y formatea solo los archivos del commit y los vuelve a agregar al stage."""
+def ruff_autofix(all_tracked: bool, pathspecs: list[str] | None = None) -> None:
+    """Corrige y formatea solo los archivos del commit y los vuelve a agregar al stage.
+
+    El hook corre antes del comando, así que un `git add` en el mismo comando
+    todavía no se ve en el stage: sus pathspecs se resuelven aparte.
+    """
     files = set(git_lines("diff", "--cached", "--name-only", "--diff-filter=ACMR"))
     if all_tracked:
         files |= set(git_lines("diff", "--name-only", "--diff-filter=ACMR"))
+    if pathspecs:
+        files |= set(
+            git_lines(
+                "ls-files",
+                "--modified",
+                "--others",
+                "--exclude-standard",
+                "--",
+                *pathspecs,
+            )
+        )
     files = sorted(
         f
         for f in files
@@ -115,13 +131,13 @@ GIT_CMD = re.compile(
     rf"""^{_GIT_BIN}"""
     rf"""((?:\s+(?:(?:-C|-c|--git-dir|--work-tree|--namespace)\s+{_VALUE}"""
     rf"""|--?[\w-]+(?:={_VALUE})?))*)"""
-    r"""\s+(push|merge|commit)\b(.*)$""",
+    r"""\s+(add|push|merge|commit)\b(.*)$""",
     re.IGNORECASE,
 )
 
 
 def git_subcommands(cmd: str) -> list[tuple[str, str]]:
-    """Devuelve (subcomando, argumentos) de cada git push/merge/commit del comando."""
+    """Devuelve (subcomando, argumentos) de cada git add/push/merge/commit del comando."""
     cmd = LINE_CONTINUATION.sub(" ", cmd)
     found = []
     for part in CMD_SEPARATORS.split(cmd):
@@ -129,6 +145,18 @@ def git_subcommands(cmd: str) -> list[tuple[str, str]]:
         if match:
             found.append((match.group(2).lower(), match.group(3)))
     return found
+
+
+def add_pathspecs(args: str) -> list[str]:
+    """Pathspecs de un `git add`. `-A` o `--all` sin rutas equivale a todo el repo."""
+    try:
+        tokens = shlex.split(args)
+    except ValueError:
+        tokens = args.split()
+    paths = [t for t in tokens if not t.startswith("-")]
+    if not paths and {"-A", "--all"} & set(tokens):
+        return ["."]
+    return paths
 
 
 def check_bash(cmd: str) -> None:
@@ -143,7 +171,10 @@ def check_bash(cmd: str) -> None:
         )
 
     branch = current_branch()
+    staged_in_cmd: list[str] = []
     for sub, args in git_subcommands(cmd):
+        if sub == "add":
+            staged_in_cmd += add_pathspecs(args)
         if sub == "push":
             tokens = re.findall(r"[\w./-]+", args)
             targets = {t.removeprefix("refs/heads/") for t in tokens} & PROTECTED
@@ -155,7 +186,10 @@ def check_bash(cmd: str) -> None:
         if sub == "commit":
             if branch in PROTECTED:
                 block(f"commit directo sobre {branch}. Crea una rama feat/... primero.")
-            ruff_autofix(all_tracked=bool(re.search(r"\s(-a|--all|-\w*a\w*)\b", args)))
+            ruff_autofix(
+                all_tracked=bool(re.search(r"\s(-a|--all|-\w*a\w*)\b", args)),
+                pathspecs=staged_in_cmd,
+            )
 
 
 def main() -> None:
