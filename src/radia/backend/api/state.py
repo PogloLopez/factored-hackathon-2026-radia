@@ -73,7 +73,12 @@ def session_currency(customer_id: str) -> tuple[Currency | None, float | None]:
 
 
 class ApiState:
-    """Lo que comparten las rutas. Un candado serializa el orquestador."""
+    """Lo que comparten las rutas.
+
+    `lock` cubre secciones cortas: dueño de la sesión, alta de sesión, decisión
+    del analista y mensajes del asesor. Nunca envuelve un turno del orquestador:
+    cada sesión ya tiene su lock.
+    """
 
     def __init__(
         self,
