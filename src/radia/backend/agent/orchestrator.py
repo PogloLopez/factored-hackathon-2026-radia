@@ -705,7 +705,11 @@ class Orchestrator:
                 calls=turn.calls,
             )
         except (ToolFailed, ToolDenied):
-            # Ni el caso se pudo crear: se avisa sin prometer nada.
+            # Ni el caso se pudo crear: se avisa sin prometer nada. Una
+            # confirmación aceptada no queda colgada: la sesión vuelve a idle.
+            session.pending = None
+            if session.state not in (SessionState.IDLE, SessionState.HANDOFF):
+                session.move_to(SessionState.IDLE)
             return self._info_fallback(session, turn)
         session.pending = None
         session.handoff_case_id = case.case_id
