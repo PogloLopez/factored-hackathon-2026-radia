@@ -83,3 +83,23 @@ def test_bronze_rechaza_tablas_sin_spec(raw_settings, monkeypatch):
     monkeypatch.setattr(cli, "get_settings", lambda: raw_settings)
     result = runner.invoke(cli.app, ["bronze", "--tables", "campaign_sends"])
     assert result.exit_code != 0
+
+
+def test_gold_y_score_por_cli(silver_settings, monkeypatch):
+    monkeypatch.setattr(cli, "get_settings", lambda: silver_settings)
+    result = runner.invoke(cli.app, ["gold", "--snapshot", "2026-06-17"])
+    assert result.exit_code == 0, result.output
+    assert "Corte: 2026-06-17" in result.output
+    assert "customer_features" in result.output
+    assert (silver_settings.data_dir / "gold" / "limit_labels.parquet").exists()
+    result = runner.invoke(cli.app, ["score"])
+    assert result.exit_code == 0, result.output
+    # C3 y C4 no tienen credit_score o ingreso.
+    assert "4 clientes, 2 sin puntaje" in result.output
+    assert (silver_settings.data_dir / "gold" / "internal_score.parquet").exists()
+
+
+def test_score_sin_gold_falla(silver_settings, monkeypatch):
+    monkeypatch.setattr(cli, "get_settings", lambda: silver_settings)
+    result = runner.invoke(cli.app, ["score"])
+    assert result.exit_code != 0
