@@ -182,3 +182,41 @@ def test_groq_campo_invalido_se_degrada_solo():
     u = GroqLanguageModel(NO_ENV, client=_FakeGroqClient(raw)).classify("x", [])
     assert u.intent == Intent.AMBIGUOUS
     assert u.injection_suspected
+
+
+@pytest.mark.parametrize(
+    ("template_id", "facts"),
+    [
+        ("confirm_request", {"product": "Tarjeta Básica", "limit": "450 USD"}),
+        ("application_created", {"product": "Tarjeta Básica", "reference": "APP-1"}),
+        ("handoff_advisor", {"case_id": "CASE-1"}),
+        ("fallback_handoff", {"case_id": "CASE-1"}),
+    ],
+)
+def test_groq_no_reescribe_confirmacion_accion_ni_handoff(template_id, facts):
+    facts = {"language": "es", **facts}
+    client = _FakeGroqClient("Tu crédito ya está aprobado.")
+    llm = GroqLanguageModel(NO_ENV, client=client)
+    assert llm.render(template_id, facts) == fill_template(template_id, facts)
+    assert client.chat.completions.sent == []  # ni siquiera se llama
+
+
+@pytest.mark.parametrize(
+    "rewrite",
+    [
+        "¡Buenas noticias! Tu Tarjeta Básica ya está aprobada.",
+        "Tu solicitud quedó registrada, tienes preaprobado Tarjeta Básica.",
+        "Approved: Tarjeta Básica con cupo de 450 USD.",
+    ],
+)
+def test_groq_descarta_reescritura_con_palabras_de_aprobacion(rewrite):
+    facts = {"language": "es", "offers": "Tarjeta Básica con cupo de 450 USD"}
+    llm = GroqLanguageModel(NO_ENV, client=_FakeGroqClient(rewrite))
+    assert llm.render("offers_list", facts) == fill_template("offers_list", facts)
+
+
+def test_groq_acepta_reescritura_sin_hechos_nuevos():
+    facts = {"language": "es", "offers": "Tarjeta Básica con cupo de 450 USD"}
+    ok = "¡Hola! Tienes preaprobado: Tarjeta Básica con cupo de 450 USD. ¿La pides?"
+    llm = GroqLanguageModel(NO_ENV, client=_FakeGroqClient(ok))
+    assert llm.render("offers_list", facts) == ok
