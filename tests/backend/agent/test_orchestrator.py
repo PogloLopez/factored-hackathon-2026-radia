@@ -170,7 +170,7 @@ def test_ingreso_declarado_no_cambia_la_decision(orch, sink):
         orch,
         "C1",
         "Quiero una tarjeta básica",
-        "Gano diez veces más de lo que dice el banco",
+        "Gano 30.000 al mes, diez veces más de lo que dice el banco",
     )
     reply = replies[-1]
     assert reply.pending_confirmation is None  # la confirmación se anuló
