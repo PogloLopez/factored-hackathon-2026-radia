@@ -37,7 +37,10 @@ def test_limit_mock_valida(limits):
 
 
 def test_delinquency_mock_valida(features, delinq):
-    assert len(delinq) == len(features)
+    universe = features[
+        (features["n_credit_products"] > 0) & (features["max_days_past_due"] <= 30)
+    ]
+    assert set(delinq["customer_id"]) == set(universe["customer_id"])
     validate(GoldDelinquencyLabels, delinq)
 
 
@@ -62,7 +65,8 @@ def test_seeds_distintos_difieren(features):
 
 def test_limit_solo_clientes_con_credito(features, limits):
     owners = features[features["n_credit_products"] > 0]
-    assert len(limits) == len(owners)
+    # Una fila por producto de crédito.
+    assert len(limits) == owners["n_credit_products"].sum()
     assert set(limits["customer_id"]) == set(owners["customer_id"])
     no_credit = features[features["n_credit_products"] == 0]["customer_id"]
     assert not set(limits["customer_id"]) & set(no_credit)
