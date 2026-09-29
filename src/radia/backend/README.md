@@ -176,5 +176,6 @@ Reglas:
 - LLM: `FakeLanguageModel`. Groq solo con `USE_GROQ=true` (gasto: checkpoint de Pablo).
 - Traces JSONL en `data_dir/traces/`.
 - Tokens, sesiones, casos y mensajes viven en memoria: se pierden al reiniciar.
+- Web estática: si existe `frontend/index.html`, `/` sirve el login y `/web/...` el resto. Fuera del esquema OpenAPI. Ver `frontend/README.md`.
 
 Detalle en [[propuesta]] y [[trabajo_en_paralelo]].
