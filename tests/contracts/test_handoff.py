@@ -22,13 +22,15 @@ def decision(**over) -> PolicyDecision:
         "customer_id": "DEMO000001",
         "product_code": "PERSONAL_LOAN",
         "attention_level": "analyst",
+        "score": 620,
         "band": "medium",
         "exposure": "medium",
         "offered_limit_usd": 4200.0,
         "negotiation_min_usd": 3360.0,
         "negotiation_max_usd": 5040.0,
-        "reasons": ["Banda media con exposición media"],
-        "alerts": ["Ingreso declarado en el chat 35% mayor al registrado"],
+        "limit_model_version": "baseline-income-multiple-0.1.0",
+        "reasons": ["band_medium_exposure_medium"],
+        "alerts": ["declared_income_mismatch"],
         "policy_version": "synthetic-policy-0.1.0",
     }
     return PolicyDecision(**{**base, **over})

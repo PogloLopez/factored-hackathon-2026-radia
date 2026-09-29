@@ -51,11 +51,13 @@ def decision(**over) -> PolicyDecision:
         "customer_id": "c1",
         "product_code": "CC_GOLD",
         "attention_level": "automatic",
+        "score": 760,
         "band": "high",
         "exposure": "low",
         "offered_limit_usd": 1000.0,
         "negotiation_min_usd": 800.0,
         "negotiation_max_usd": 1200.0,
+        "limit_model_version": "m1",
         "reasons": ["score_high"],
         "policy_version": "p1",
     }
@@ -126,6 +128,7 @@ def test_decision_not_eligible_with_limit_fails():
 def test_decision_not_eligible_without_limit_passes():
     d = decision(
         attention_level="not_eligible",
+        score=None,
         band=None,
         offered_limit_usd=None,
         negotiation_min_usd=None,
@@ -149,7 +152,10 @@ def test_decision_partial_limits_fail(over):
 
 def test_decision_no_limits_at_all_passes():
     d = decision(
-        offered_limit_usd=None, negotiation_min_usd=None, negotiation_max_usd=None
+        attention_level="analyst",
+        offered_limit_usd=None,
+        negotiation_min_usd=None,
+        negotiation_max_usd=None,
     )
     assert d.negotiation_min_usd is None
 
@@ -223,3 +229,49 @@ def test_minimal_policy_is_callable():
     policy: EligibilityPolicy = Minimal()
     out = policy.decide(pinput())
     assert out.customer_id == "c1" and policy.version == "p1"
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"score": None, "band": None},  # automático sin puntaje
+        {
+            "offered_limit_usd": None,
+            "negotiation_min_usd": None,
+            "negotiation_max_usd": None,
+        },  # automático sin cupo
+        {"score": None},  # score y band no van juntos
+        {"band": None},
+        {"limit_model_version": None},  # cupo sin versión del modelo
+        {"reasons": ["Banda alta"]},  # código que no es snake_case
+        {"alerts": [""]},
+    ],
+)
+def test_decision_invariantes_nuevas_fallan(over):
+    with pytest.raises(ValidationError):
+        decision(**over)
+
+
+def test_decision_alternativa_y_preferencial():
+    d = decision(
+        attention_level="not_eligible",
+        offered_limit_usd=None,
+        negotiation_min_usd=None,
+        negotiation_max_usd=None,
+        limit_model_version=None,
+        alternative_product_code="CC_BASIC",
+        preferential=True,
+    )
+    assert d.alternative_product_code == "CC_BASIC"
+    assert d.preferential
+
+
+@pytest.mark.parametrize("field", ["monthly_income_usd"])
+def test_input_ingreso_cero_falla(field):
+    with pytest.raises(ValidationError):
+        pinput(**{field: 0})
+
+
+def test_request_ingreso_declarado_cero_falla():
+    with pytest.raises(ValidationError):
+        CustomerRequest(product_code="CC_BASIC", declared_monthly_income_usd=0)
