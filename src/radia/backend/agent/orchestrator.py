@@ -57,7 +57,7 @@ from radia.backend.agent.tracing import TraceSink
 from radia.contracts.common import AttentionLevel, ProductCode
 from radia.contracts.eval_case import Behavior, Language
 from radia.contracts.handoff import HandoffCase, HandoffType, Priority
-from radia.contracts.trace import Outcome, TurnTrace
+from radia.contracts.trace import Outcome, ToolCall, TurnTrace
 
 SESSION_TTL = timedelta(minutes=30)
 GENERIC_PRODUCT = {Language.ES: "crédito", Language.PT: "crédito"}
@@ -124,6 +124,8 @@ class _Turn(BaseModel):
     policy_version: str | None = None
     handoff: HandoffCase | None = None
     application_reference: str | None = None
+    # Recolector de tools de ESTE turno: nada compartido entre turnos.
+    calls: list[ToolCall] = Field(default_factory=list)
 
     def use_offer(self, offer: Offer) -> None:
         self.rule_ids += offer.reasons + offer.alerts
@@ -185,7 +187,6 @@ class Orchestrator:
     def handle_message(self, session_id: str, message: str) -> ChatReply:
         session = self._session(session_id)
         started, usage_before = time.perf_counter(), self.llm.usage
-        self.tools.drain_calls()
         if not session.is_active(self.clock()):
             turn = _Turn(intent="session_expired", outcome=Outcome.REFUSED)
             text = self._say(session, "session_expired")
@@ -201,7 +202,6 @@ class Orchestrator:
         """Botón Sí o No del cliente. Es la única vía para ejecutar una acción."""
         session = self._session(session_id)
         started, usage_before = time.perf_counter(), self.llm.usage
-        self.tools.drain_calls()
         turn = _Turn(intent="confirm")
         if not session.is_active(self.clock()):
             turn.intent, turn.outcome = "session_expired", Outcome.REFUSED
@@ -227,7 +227,9 @@ class Orchestrator:
             return self._say(session, "injection_refused")
         if u.other_customer_id and u.other_customer_id != session.customer_id:
             try:
-                self.tools.get_active_offers(session, u.other_customer_id)
+                self.tools.get_active_offers(
+                    session, u.other_customer_id, calls=turn.calls
+                )
             except ToolDenied:
                 pass
             turn.outcome = Outcome.REFUSED
@@ -264,7 +266,7 @@ class Orchestrator:
     # --- Casos ---------------------------------------------------------------
 
     def _offers(self, session: Session, turn: _Turn) -> str:
-        offers = self._load_offers(session)
+        offers = self._load_offers(session, turn)
         if offers is None:
             return self._info_fallback(session, turn)
         lang = session.language
@@ -297,7 +299,7 @@ class Orchestrator:
         product = u.product_code or session.focus_product
         if product is None:
             return self._clarify(session, turn)
-        offer = self._offer_for(session, product)
+        offer = self._offer_for(session, turn, product)
         if offer is None:
             return self._fallback_handoff(session, turn, product)
         turn.use_offer(offer)
@@ -409,7 +411,7 @@ class Orchestrator:
 
         session.pending = pending.model_copy(update={"accepted": True})
         product = pending.product_code
-        offer = self._offer_for(session, product)
+        offer = self._offer_for(session, turn, product)
         if offer is None or offer.offer_id != pending.offer_id:
             return self._fallback_handoff(
                 session,
@@ -422,7 +424,7 @@ class Orchestrator:
         confirmed = f"El cliente confirmó la solicitud de la oferta {offer.offer_id}."
         try:
             application = self.tools.create_application(
-                session, offer.offer_id, confirmation_id
+                session, offer.offer_id, confirmation_id, calls=turn.calls
             )
         except (ToolFailed, ToolDenied):
             return self._fallback_handoff(
@@ -433,7 +435,7 @@ class Orchestrator:
                 actions=[confirmed, "La tool de solicitudes falló."],
                 questions=["Registrar a mano la solicitud confirmada."],
             )
-        if not self._verify(session, application, offer):
+        if not self._verify(session, turn, application, offer):
             ref = application.reference
             return self._fallback_handoff(
                 session,
@@ -455,10 +457,14 @@ class Orchestrator:
             reference=application.reference,
         )
 
-    def _verify(self, session: Session, application: Application, offer: Offer) -> bool:
+    def _verify(
+        self, session: Session, turn: _Turn, application: Application, offer: Offer
+    ) -> bool:
         """Lee la solicitud de vuelta. Solo se reporta lo que quedó registrado."""
         try:
-            stored = self.tools.get_application(session, application.reference)
+            stored = self.tools.get_application(
+                session, application.reference, calls=turn.calls
+            )
         except (ToolFailed, ToolDenied):
             return False
         return (
@@ -472,7 +478,7 @@ class Orchestrator:
     def _to_advisor(self, session: Session, u: Understanding, turn: _Turn) -> str:
         product = u.product_code or session.focus_product
         dispute = u.intent == Intent.DISPUTE
-        offers = self._load_offers(session)
+        offers = self._load_offers(session, turn)
         offer = self._pick(offers, product) if offers is not None else None
         questions = [
             "El cliente disputa la decisión."
@@ -510,7 +516,7 @@ class Orchestrator:
     def _declared_income(self, session: Session, u: Understanding, turn: _Turn) -> str:
         """El ingreso del chat no es un dato verificado: pregunta abierta."""
         product = u.product_code or session.focus_product
-        offers = self._load_offers(session)
+        offers = self._load_offers(session, turn)
         offer = self._pick(offers, product) if offers and product else None
         turn.rule_ids.append("declared_income_unverified")
         if offer is not None:
@@ -548,7 +554,7 @@ class Orchestrator:
 
     def _why_not(self, session: Session, u: Understanding, turn: _Turn) -> str:
         product = u.product_code or session.focus_product
-        offers = self._load_offers(session)
+        offers = self._load_offers(session, turn)
         if offers is None:
             return self._info_fallback(session, turn)
         if product is not None:
@@ -571,7 +577,7 @@ class Orchestrator:
         product = u.product_code or session.focus_product
         if product is None:
             return self._clarify(session, turn)
-        offers = self._load_offers(session)
+        offers = self._load_offers(session, turn)
         offer = self._pick(offers, product) if offers is not None else None
         if offer is None:
             return self._info_fallback(session, turn)
@@ -686,6 +692,7 @@ class Orchestrator:
                 priority=Priority.HIGH
                 if high_priority or preferential
                 else Priority.NORMAL,
+                calls=turn.calls,
             )
         except (ToolFailed, ToolDenied):
             # Ni el caso se pudo crear: se avisa sin prometer nada.
@@ -715,10 +722,12 @@ class Orchestrator:
         except KeyError:
             raise UnknownSession(session_id) from None
 
-    def _load_offers(self, session: Session) -> list[Offer] | None:
+    def _load_offers(self, session: Session, turn: _Turn) -> list[Offer] | None:
         """Ofertas vigentes. `None` si la fuente falló o todo está vencido."""
         try:
-            lookup = self.tools.get_active_offers(session, session.customer_id)
+            lookup = self.tools.get_active_offers(
+                session, session.customer_id, calls=turn.calls
+            )
         except (ToolFailed, ToolDenied):
             return None
         if lookup.expired_count and not lookup.offers:
@@ -733,8 +742,10 @@ class Orchestrator:
             return None
         return next((o for o in offers if o.product_code == product), None)
 
-    def _offer_for(self, session: Session, product: ProductCode) -> Offer | None:
-        return self._pick(self._load_offers(session), product)
+    def _offer_for(
+        self, session: Session, turn: _Turn, product: ProductCode
+    ) -> Offer | None:
+        return self._pick(self._load_offers(session, turn), product)
 
     def _say(self, session: Session, template_id: str, **facts: object) -> str:
         return self.llm.render(
@@ -759,7 +770,7 @@ class Orchestrator:
             customer_id=session.customer_id,
             eval_case_id=session.eval_case_id,
             intent=turn.intent,
-            tools=self.tools.drain_calls(),
+            tools=turn.calls,
             behaviors=_dedup(turn.behaviors),
             outcome=turn.outcome,
             attention_level=turn.attention_level,

@@ -11,7 +11,9 @@
   (`TransientToolError`). Una denegación nunca se reintenta.
 - Ofertas vencidas (`expires_at` pasado) no se devuelven. El orquestador cae a
   un fallback seguro y nunca inventa una oferta.
-- Cada llamada deja un `ToolCall` (C11) para el tracing del turno.
+- Cada llamada deja un `ToolCall` (C11) en el recolector `calls` que pasa
+  quien llama (uno por turno). El `ToolBox` no guarda estado compartido,
+  así que turnos concurrentes no mezclan trazas.
 - Fuentes inyectables: ofertas en memoria desde un DataFrame C6, solicitudes y
   casos en memoria. En producción se cambian por repositorios reales.
 """
@@ -251,19 +253,17 @@ class ToolBox:
         self.clock = clock
         self.max_attempts = max_attempts
         self.wait = wait or wait_exponential(multiplier=0.2, max=2)
-        self.calls: list[ToolCall] = []
-
-    def drain_calls(self) -> list[ToolCall]:
-        calls, self.calls = self.calls, []
-        return calls
 
     # Permisos y ejecución --------------------------------------------------
 
-    def _record(self, name: str, start: float, **fields: Any) -> None:
+    @staticmethod
+    def _record(calls: list[ToolCall], name: str, start: float, **fields: Any) -> None:
         latency_ms = (time.perf_counter() - start) * 1000
-        self.calls.append(ToolCall(name=name, latency_ms=latency_ms, **fields))
+        calls.append(ToolCall(name=name, latency_ms=latency_ms, **fields))
 
-    def _authorize(self, name: str, session: Session, customer_id: str) -> None:
+    def _authorize(
+        self, calls: list[ToolCall], name: str, session: Session, customer_id: str
+    ) -> None:
         start = time.perf_counter()
         if not session.is_active(self.clock()):
             code = "session_expired"
@@ -271,10 +271,10 @@ class ToolBox:
             code = "customer_mismatch"
         else:
             return
-        self._record(name, start, ok=False, denied=True, error=code)
+        self._record(calls, name, start, ok=False, denied=True, error=code)
         raise ToolDenied(code)
 
-    def _run[T](self, name: str, fn: Callable[[], T]) -> T:
+    def _run[T](self, calls: list[ToolCall], name: str, fn: Callable[[], T]) -> T:
         start = time.perf_counter()
         attempts = 0
         try:
@@ -289,23 +289,31 @@ class ToolBox:
                     result = fn()
         except ToolDenied as exc:
             self._record(
-                name, start, ok=False, denied=True, error=exc.code, attempt=attempts
+                calls,
+                name,
+                start,
+                ok=False,
+                denied=True,
+                error=exc.code,
+                attempt=attempts,
             )
             raise
         except Exception as exc:
             # Cualquier falla técnica (reintentable o no) termina en fallback.
             # Solo el tipo: el mensaje puede traer datos del cliente.
             error = type(exc).__name__
-            self._record(name, start, ok=False, error=error, attempt=attempts)
+            self._record(calls, name, start, ok=False, error=error, attempt=attempts)
             raise ToolFailed(name) from exc
-        self._record(name, start, ok=True, attempt=attempts)
+        self._record(calls, name, start, ok=True, attempt=attempts)
         return result
 
     # Tools -----------------------------------------------------------------
 
-    def get_active_offers(self, session: Session, customer_id: str) -> OfferLookup:
+    def get_active_offers(
+        self, session: Session, customer_id: str, *, calls: list[ToolCall]
+    ) -> OfferLookup:
         """Ofertas vigentes del cliente de la sesión. Otro cliente: denegado."""
-        self._authorize("get_active_offers", session, customer_id)
+        self._authorize(calls, "get_active_offers", session, customer_id)
 
         def lookup() -> OfferLookup:
             now = self.clock()
@@ -313,14 +321,19 @@ class ToolBox:
             valid = [o for o in rows if o.is_valid(now)]
             return OfferLookup(offers=valid, expired_count=len(rows) - len(valid))
 
-        return self._run("get_active_offers", lookup)
+        return self._run(calls, "get_active_offers", lookup)
 
     def create_application(
-        self, session: Session, offer_id: str, confirmation_id: str
+        self,
+        session: Session,
+        offer_id: str,
+        confirmation_id: str,
+        *,
+        calls: list[ToolCall],
     ) -> Application:
         """Registra la solicitud. Exige confirmación aceptada y oferta automática."""
         name = "create_application"
-        self._authorize(name, session, session.customer_id)
+        self._authorize(calls, name, session, session.customer_id)
         pending = session.pending
         if (
             pending is None
@@ -329,6 +342,7 @@ class ToolBox:
             or pending.offer_id != offer_id
         ):
             self._record(
+                calls,
                 name,
                 time.perf_counter(),
                 ok=False,
@@ -365,12 +379,14 @@ class ToolBox:
                 )
             )
 
-        return self._run(name, create)
+        return self._run(calls, name, create)
 
-    def get_application(self, session: Session, reference: str) -> Application | None:
+    def get_application(
+        self, session: Session, reference: str, *, calls: list[ToolCall]
+    ) -> Application | None:
         """Lee una solicitud para verificarla. Solo las del cliente de la sesión."""
         name = "get_application"
-        self._authorize(name, session, session.customer_id)
+        self._authorize(calls, name, session, session.customer_id)
 
         def read() -> Application | None:
             found = self.applications.get(reference)
@@ -378,7 +394,7 @@ class ToolBox:
                 raise ToolDenied("customer_mismatch")
             return found
 
-        return self._run(name, read)
+        return self._run(calls, name, read)
 
     def create_handoff(
         self,
@@ -392,13 +408,14 @@ class ToolBox:
         actions_taken: Sequence[str] = (),
         open_questions: Sequence[str] = (),
         priority: Priority = Priority.NORMAL,
+        calls: list[ToolCall],
     ) -> HandoffCase:
         """Crea el expediente C9 del cliente de la sesión y verifica que quedó."""
         name = "create_handoff"
         customer_id = (
             policy_decision.customer_id if policy_decision else session.customer_id
         )
-        self._authorize(name, session, customer_id)
+        self._authorize(calls, name, session, customer_id)
 
         def create() -> HandoffCase:
             case = HandoffCase(
@@ -421,4 +438,4 @@ class ToolBox:
                 raise TransientToolError("el caso no quedó guardado")
             return stored
 
-        return self._run(name, create)
+        return self._run(calls, name, create)
