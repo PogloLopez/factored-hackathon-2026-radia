@@ -26,7 +26,13 @@
     submit.disabled = true;
     try {
       const auth = await Radia.api("POST", "/auth/login", { username, password });
-      Radia.saveAuth(auth);
+      if (!Radia.saveAuth(auth)) {
+        Radia.showError(
+          error,
+          "Tu navegador bloquea el almacenamiento de la sesión. Habilítalo para esta página o usa otra ventana.",
+        );
+        return;
+      }
       window.location.assign(Radia.ROLE_PAGES[auth.role]);
     } catch (err) {
       Radia.showError(error, err);
