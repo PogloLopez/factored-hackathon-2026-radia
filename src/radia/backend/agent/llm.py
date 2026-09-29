@@ -14,6 +14,7 @@
 
 import html
 import json
+import math
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -468,7 +469,9 @@ PT_MARKERS = _rx(
 EN_MARKERS = _rx(
     r"\b(the|i want|please|loan|hello|my|what|do i have|mortgage|approved|card)\b"
 )
-AMOUNT = _rx(r"(\d+(?:[.,]\d+)*)\s*(millones|millon|milhoes|milhao|million|mil|k)?\b")
+# Un token numérico: dígitos con separadores internos (. , / -), p. ej.
+# "5.000", "1.000.000,50" o una fecha "12.05.2026".
+AMOUNT = _rx(r"(\d[\d.,/-]*\d|\d)\s*(millones|millon|milhoes|milhao|million|mil|k)?\b")
 MULTIPLIER = {
     "millones": 1e6,
     "millon": 1e6,
@@ -478,19 +481,39 @@ MULTIPLIER = {
     "mil": 1e3,
     "k": 1e3,
 }
+# Formatos aceptados. Todo lo demás (fechas, mezclas raras) no es un monto.
+_THOUSANDS = re.compile(r"\d{1,3}(?:\.\d{3})+|\d{1,3}(?:,\d{3})+")
+_THOUSANDS_DECIMAL_ES = re.compile(r"\d{1,3}(?:\.\d{3})+,\d{1,2}")
+_THOUSANDS_DECIMAL_EN = re.compile(r"\d{1,3}(?:,\d{3})+\.\d{1,2}")
+_DECIMAL = re.compile(r"\d+[.,]\d{1,2}")
+
+
+def _number_value(raw: str) -> float | None:
+    if raw.isdigit() or _THOUSANDS.fullmatch(raw):
+        return float(re.sub(r"[.,]", "", raw))
+    if _THOUSANDS_DECIMAL_ES.fullmatch(raw):
+        return float(raw.replace(".", "").replace(",", "."))
+    if _THOUSANDS_DECIMAL_EN.fullmatch(raw):
+        return float(raw.replace(",", ""))
+    if _DECIMAL.fullmatch(raw):
+        return float(raw.replace(",", "."))
+    return None
 
 
 def _parse_amount(text: str) -> float | None:
-    match = AMOUNT.search(text)
-    if match is None:
+    """Monto del mensaje, o `None` si no se puede interpretar con seguridad.
+
+    Nunca lanza. Más de un número en el mensaje es ambiguo: `None`.
+    """
+    matches = AMOUNT.findall(text)
+    if len(matches) != 1:
         return None
-    raw, unit = match.groups()
-    if re.fullmatch(r"\d{1,3}([.,]\d{3})+", raw):
-        value = float(re.sub(r"[.,]", "", raw))
-    else:
-        value = float(raw.replace(",", "."))
-    value *= MULTIPLIER.get(unit or "", 1.0)
-    return value if value > 0 else None
+    raw, unit = matches[0]
+    value = _number_value(raw)
+    if value is None:
+        return None
+    value *= MULTIPLIER.get(unit, 1.0)
+    return value if math.isfinite(value) and value > 0 else None
 
 
 def _detect_language(text: str) -> Language:
