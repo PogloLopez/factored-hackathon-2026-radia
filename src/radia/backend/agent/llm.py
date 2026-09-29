@@ -531,6 +531,22 @@ def _number_value(raw: str) -> float | None:
     return None
 
 
+def local_amounts(message: str) -> tuple[float | None, float | None, bool]:
+    """Monto, ingreso declarado y si viene en USD, parseados del texto ORIGINAL.
+
+    Los montos nunca se toman del LLM: el texto que le llega va enmascarado (PII)
+    y un monto de 6+ dígitos se perdería. El parseo local es determinista.
+    """
+    text = normalize(message)
+    # El número de otro cliente no es un monto.
+    text_wo_ids = OTHER_CUSTOMER.sub(" ", text)
+    amount = _parse_amount(text_wo_ids)
+    # Solo un monto declarado explícitamente es ingreso declarado.
+    declared = amount if DECLARED_INCOME.search(text) else None
+    in_usd = amount is not None and bool(USD.search(text_wo_ids))
+    return amount, declared, in_usd
+
+
 def _parse_amount(text: str) -> float | None:
     """Monto del mensaje, o `None` si no se puede interpretar con seguridad.
 
@@ -569,14 +585,9 @@ class FakeLanguageModel:
     def classify(self, message: str, history: Sequence[ChatMessage]) -> Understanding:
         text = normalize(message)
         other = OTHER_CUSTOMER.search(message)
-        # El número del cliente no es un monto.
-        text_wo_ids = OTHER_CUSTOMER.sub(" ", text)
         product = next((code for code, rx in PRODUCTS if rx.search(text)), None)
-        amount = _parse_amount(text_wo_ids)
+        amount, declared, in_usd = local_amounts(message)
         mentions_income = bool(INCOME.search(text))
-        # Solo un monto declarado explícitamente es ingreso declarado.
-        declared = amount if DECLARED_INCOME.search(text) else None
-        in_usd = amount is not None and bool(USD.search(text_wo_ids))
         topic = next((t for t, rx in UNSUPPORTED.items() if rx.search(text)), None)
         if topic is not None and _credit_wins(topic, product, text):
             topic = None
@@ -786,7 +797,14 @@ class GroqLanguageModel:
         except (GroqError, ValueError, AttributeError, IndexError):
             # Salida ilegible: se pide aclaración, nunca se adivina.
             return Understanding(intent=Intent.AMBIGUOUS)
-        return _understanding_from(raw)
+        amount, declared, in_usd = local_amounts(message)
+        return _understanding_from(raw).model_copy(
+            update={
+                "amount": amount,
+                "declared_monthly_income": declared,
+                "amount_in_usd": in_usd,
+            }
+        )
 
     def render(self, template_id: str, facts: Mapping[str, object]) -> str:
         draft = fill_template(template_id, facts)
