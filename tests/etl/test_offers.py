@@ -198,3 +198,12 @@ def test_cli_offers(gold_settings, monkeypatch):
     result = runner.invoke(cli.app, ["offers"])
     assert result.exit_code == 0, result.output
     assert "active_offers.parquet" in result.output
+
+
+def test_trazabilidad_de_corte_puntaje_y_exposicion():
+    features = make_gold_features(n=5, seed=8)
+    scores = make_internal_scores(features, seed=8)
+    out = build_offers(features, scores, IncomeMultipleBaseline(), POLICY, GENERATED_AT)
+    assert (out["snapshot_date"] == features["snapshot_date"].iloc[0]).all()
+    assert set(out["score_version"].dropna()) == set(scores["score_version"])
+    assert out["exposure"].notna().all()

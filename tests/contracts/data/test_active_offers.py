@@ -190,9 +190,10 @@ def test_falla_cupo_sin_version_de_modelo(offers):
 
 def test_alternativa_de_producto_valida_y_fuera_de_catalogo(offers):
     df = offers.copy()
-    df.loc[0, "alternative_product_code"] = ProductCode.CC_BASIC.value
+    i = df.index[df["offered_limit_usd"].isna()][0]
+    df.loc[i, "alternative_product_code"] = ProductCode.CC_BASIC.value
     validate(ActiveOffers, df)
-    df.loc[0, "alternative_product_code"] = "CRYPTO"
+    df.loc[i, "alternative_product_code"] = "CRYPTO"
     with pytest.raises(ERRORS):
         validate(ActiveOffers, df)
 
@@ -256,5 +257,26 @@ def test_preferential_es_columna_obligatoria(offers):
 def test_falla_codigo_con_salto_de_linea_final(offers):
     df = offers.copy()
     df.loc[0, "reasons_json"] = '["mock_reason\n"]'
+    with pytest.raises(ERRORS):
+        validate(ActiveOffers, df)
+
+
+def test_falla_alternativa_con_cupo(offers):
+    df = offers.copy()
+    i = _eligible_idx(df)
+    df.loc[i, "alternative_product_code"] = ProductCode.CC_BASIC.value
+    with pytest.raises(ERRORS):
+        validate(ActiveOffers, df)
+
+
+@pytest.mark.parametrize("col", ["exposure", "snapshot_date"])
+def test_trazabilidad_obligatoria(offers, col):
+    with pytest.raises(ERRORS):
+        validate(ActiveOffers, offers.drop(columns=col))
+
+
+def test_falla_exposicion_fuera_del_enum(offers):
+    df = offers.copy()
+    df.loc[0, "exposure"] = "extreme"
     with pytest.raises(ERRORS):
         validate(ActiveOffers, df)
