@@ -1,0 +1,68 @@
+# PESOS PROVISIONALES. Checkpoint de Pablo: NO aprobados.
+# Sirven para construir y probar el pipeline. Antes de usarlos en la demo o
+# en la evaluación, Pablo los revisa y aprueba (ver .claude/rules/git.md).
+#
+# Cada componente es lineal entre dos puntos y se recorta en los extremos:
+#   x <= x_low  -> points_low
+#   x >= x_high -> points_high
+#   x nulo      -> missing_points
+# Puntaje = base + suma de componentes, redondeado y recortado a [150, 950].
+# Rango teórico con estos pesos: 150 + [-200, 800] -> recortado a [150, 950].
+
+score_version: "v0-provisional"
+base: 150
+
+components:
+  # Puntaje del buró: el de mayor peso.
+  credit_score:
+    feature: credit_score
+    x_low: 300
+    x_high: 850
+    points_low: 0
+    points_high: 400
+    missing_points: 0  # sin buró el puntaje queda nulo de todos modos
+
+  # Saldo de crédito sobre ingreso mensual. Penaliza el endeudamiento.
+  debt_to_income:
+    feature: debt_to_income
+    x_low: 0.0
+    x_high: 1.5
+    points_low: 100
+    points_high: -100
+    missing_points: -100  # ingreso 0: no se puede medir la capacidad de pago
+
+  # Coeficiente de variación de depósitos mensuales (6 meses). Menor es mejor.
+  income_stability:
+    feature: income_stability_6m
+    x_low: 0.0
+    x_high: 1.5
+    points_low: 100
+    points_high: 0
+    missing_points: 0  # sin depósitos en la ventana
+
+  # Antigüedad como cliente, en meses.
+  tenure:
+    feature: tenure_months
+    x_low: 0
+    x_high: 60
+    points_low: 0
+    points_high: 100
+    missing_points: 0
+
+  # Máximo de días de mora en crédito no cerrado.
+  delinquency:
+    feature: max_days_past_due
+    x_low: 0
+    x_high: 90
+    points_low: 100
+    points_high: -100
+    missing_points: 0
+
+  # Saldo sobre cupo de tarjetas. Hasta 30 % no penaliza.
+  credit_utilization:
+    feature: credit_utilization
+    x_low: 0.3
+    x_high: 1.0
+    points_low: 100
+    points_high: 0
+    missing_points: 50  # sin tarjeta con cupo: neutro
