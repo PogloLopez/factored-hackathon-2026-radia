@@ -87,6 +87,7 @@ uv run radia-etl score --weights otro.yaml
 - **Pesos provisionales. Checkpoint de Pablo: no aprobados.**
 - Componentes lineales y recortados: buró (mayor peso), deuda sobre ingreso, estabilidad de ingresos, antigüedad, mora y uso del cupo.
 - Puntaje = base + puntos, recortado a [150, 950]. `breakdown_json` guarda los puntos por componente.
+- El rango teórico de los pesos (base + mínimos y máximos de cada componente) debe caer en [150, 950]; si no, cargar el YAML falla. v0: 300 + [-150, 650].
 - Sin `credit_score` o sin ingreso: puntaje nulo y desglose `{}`. La política lo manda al analista.
 - Las exclusiones (inactivo, mora > 30 días) viven en la política, no aquí. Ver [[propuesta]].
 

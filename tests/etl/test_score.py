@@ -108,7 +108,7 @@ def test_mejor_perfil_llega_al_tope_y_peor_al_piso(weights):
     worst = _customer(
         credit_score=300,
         tenure_months=0,
-        debt_to_income=5.0,
+        debt_to_income=50.0,
         credit_utilization=1.5,
         income_stability_6m=3.0,
         max_days_past_due=120,
