@@ -12,7 +12,7 @@ from tenacity import wait_none
 
 from radia.backend.agent.llm import FakeLanguageModel
 from radia.backend.agent.orchestrator import Orchestrator, UnknownSession
-from radia.backend.agent.session import SessionState
+from radia.backend.agent.session import Currency, SessionState
 from radia.backend.agent.tools import (
     InMemoryApplicationStore,
     InMemoryOfferRepository,
@@ -347,3 +347,47 @@ def test_cada_turno_deja_trace_valido(orch, sink):
         assert "Ignora" not in json.dumps(payload, ensure_ascii=False)
     assert sink.traces[-1].intent == "ambiguous"
     assert session.state == SessionState.HANDOFF
+
+
+# --- Moneda del monto pedido ----------------------------------------------------
+
+
+def test_monto_local_sin_tasa_no_enruta(orch):
+    # 5.000 pesos no son 5.000 USD: sin tasa, no escala por monto.
+    session = orch.start_session("C1", currency=Currency.MXN)
+    reply = orch.handle_message(
+        session.session_id, "Quiero una tarjeta básica de 5.000"
+    )
+    assert reply.state == SessionState.AWAITING_CONFIRMATION
+
+
+def test_monto_local_sin_tasa_va_como_pregunta_abierta(orch):
+    session = orch.start_session("C1", currency=Currency.MXN)
+    reply = orch.handle_message(session.session_id, "Quiero un préstamo de 2.000.000")
+    case = case_of(orch, reply)
+    assert "2,000,000 MXN" in case.request_summary
+    assert any("sin tasa" in q for q in case.open_questions)
+
+
+def test_monto_local_se_convierte_antes_de_comparar(orch):
+    session = orch.start_session("C1", currency=Currency.COP, usd_per_unit=0.00025)
+    reply = orch.handle_message(
+        session.session_id, "Quiero una tarjeta básica de 5.000.000"
+    )
+    # 5.000.000 COP ≈ 1.250 USD, sobre el máximo de negociación (540 USD).
+    case = case_of(orch, reply)
+    assert case.handoff_type == HandoffType.ANALYST_REVIEW
+    assert "5,000,000 COP" in case.request_summary
+    assert any("1,250 USD" in q for q in case.open_questions)
+
+
+def test_monto_en_dolares_no_se_convierte(orch):
+    session = orch.start_session("C1", currency=Currency.ARS, usd_per_unit=0.001)
+    reply = orch.handle_message(
+        session.session_id, "Quiero una tarjeta básica de 400 dólares"
+    )
+    assert reply.state == SessionState.AWAITING_CONFIRMATION
+    reply = orch.handle_message(
+        session.session_id, "Quiero una tarjeta básica de 1.000 dólares"
+    )
+    assert "1,000 USD" in case_of(orch, reply).request_summary
