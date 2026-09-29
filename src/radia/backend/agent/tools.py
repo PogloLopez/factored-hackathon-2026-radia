@@ -277,15 +277,26 @@ class InMemoryApplicationStore:
 
 
 class InMemoryCaseStore:
+    """Casos en memoria. Un lock protege el diccionario: el chat agrega casos
+    mientras la bandeja del analista o del asesor los lista."""
+
     def __init__(self) -> None:
         self.cases: dict[str, HandoffCase] = {}
+        self._lock = threading.Lock()
 
     def save(self, case: HandoffCase) -> HandoffCase:
-        self.cases[case.case_id] = case
+        with self._lock:
+            self.cases[case.case_id] = case
         return case
 
     def get(self, case_id: str) -> HandoffCase | None:
-        return self.cases.get(case_id)
+        with self._lock:
+            return self.cases.get(case_id)
+
+    def list_cases(self) -> list[HandoffCase]:
+        """Copia de los casos tomada bajo el lock: se puede recorrer sin él."""
+        with self._lock:
+            return list(self.cases.values())
 
 
 # --- Tools -------------------------------------------------------------------

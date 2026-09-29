@@ -258,7 +258,7 @@ def create_app(
     def analyst_cases(_: Analyst, state: State) -> AnalystCasesResponse:
         cases = [
             c
-            for c in state.cases.cases.values()
+            for c in state.cases.list_cases()
             if c.handoff_type == HandoffType.ANALYST_REVIEW
             and c.status in OPEN_STATUSES
         ]
@@ -291,7 +291,7 @@ def create_app(
             AdvisorSession(
                 case=c, messages=list(state.advisor_messages.get(c.case_id, []))
             )
-            for c in state.cases.cases.values()
+            for c in state.cases.list_cases()
             if c.handoff_type == HandoffType.ADVISOR
         ]
         sessions.sort(key=lambda s: s.case.created_at)
