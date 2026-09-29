@@ -4,6 +4,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from pydantic import SecretStr
 
@@ -12,10 +13,12 @@ from radia.backend.agent.session import Currency
 from radia.backend.agent.tracing import JsonlTraceSink
 from radia.backend.api.app import create_app
 from radia.backend.api.auth import ANALYST_USERNAME, DEMO_PASSWORD
-from radia.backend.api.state import ApiState
+from radia.backend.api.state import ApiState, load_offers
 from radia.config import Settings
 from radia.contracts.api import ChatResponse
 from radia.contracts.handoff import HandoffCase, HandoffType
+from radia.etl.offers import OFFERS_FILE
+from radia.eval.demo_customers import demo_offers
 
 AUTOMATIC_CUSTOMER = "DEMO000001"  # Tarjeta básica automática (México).
 ANALYST_CUSTOMER = "DEMO000008"  # Préstamo personal al analista.
@@ -365,6 +368,35 @@ def test_list_cases_returns_a_copy(app):
     cases.save(_bare_case(2, HandoffType.ADVISOR))
     assert [c.case_id for c in listed] == ["CASE-T000001"]
     assert len(cases.list_cases()) == 2
+
+
+# --- Ofertas con Gold ------------------------------------------------------------
+
+FIXED_NOW = datetime(2026, 9, 29, 12, tzinfo=UTC)
+
+
+def test_gold_offers_keep_demo_customers(monkeypatch):
+    """Con el parquet de Gold, los clientes demo siguen con sus ofertas."""
+    demo = demo_offers(FIXED_NOW)
+    gold = demo.head(2).copy()
+    gold.loc[0, ["offer_id", "customer_id"]] = ["GOLD-OFFER-1", "C000000001"]
+    gold.loc[1, "offered_limit_usd"] = 1234.0  # Mismo id que un demo: gana Gold.
+    shared_id = gold.loc[1, "offer_id"]
+
+    real_exists = Path.exists
+    monkeypatch.setattr(
+        Path, "exists", lambda p: p.name == OFFERS_FILE or real_exists(p)
+    )
+    monkeypatch.setattr(pd, "read_parquet", lambda path: gold)
+
+    offers = load_offers(Settings(_env_file=None, data_dir=OFFLINE), lambda: FIXED_NOW)
+
+    assert offers["offer_id"].is_unique
+    assert "GOLD-OFFER-1" in set(offers["offer_id"])
+    assert set(demo["offer_id"]) <= set(offers["offer_id"])
+    shared = offers.loc[offers["offer_id"] == shared_id, "offered_limit_usd"]
+    assert shared.tolist() == [1234.0]
+    assert set(demo["customer_id"]) <= set(offers["customer_id"])
 
 
 # --- Configuración -------------------------------------------------------------
