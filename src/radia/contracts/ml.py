@@ -20,7 +20,7 @@ CONTRACT_VERSION = "0.1.0"
 
 
 class LimitPrediction(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     customer_id: str = Field(min_length=1)
     product_code: ProductCode
@@ -37,7 +37,7 @@ class LimitPrediction(BaseModel):
 
 
 class RiskEstimate(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     customer_id: str = Field(min_length=1)
     prob_delinquent_30p: float = Field(ge=0, le=1)
