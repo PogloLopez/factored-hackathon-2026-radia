@@ -324,3 +324,11 @@ def test_numero_sin_contexto_de_dinero_no_es_monto(text, amount):
 def test_ingreso_declarado_es_contexto_de_dinero():
     amount, declared, _ = local_amounts("gano 8000")
     assert amount == declared == 8000
+
+
+def test_groq_ingreso_declarado_no_es_monto_pedido():
+    client = _FakeGroqClient('{"intent": "apply_product", "amount": 8000}')
+    u = GroqLanguageModel(NO_ENV, client=client).classify("gano 8000", [])
+    assert u.declared_monthly_income == 8000
+    assert u.amount is None
+    assert u.amount == classify("gano 8000").amount
