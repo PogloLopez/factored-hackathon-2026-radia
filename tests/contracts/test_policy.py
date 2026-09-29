@@ -275,3 +275,8 @@ def test_input_ingreso_cero_falla(field):
 def test_request_ingreso_declarado_cero_falla():
     with pytest.raises(ValidationError):
         CustomerRequest(product_code="CC_BASIC", declared_monthly_income_usd=0)
+
+
+def test_decision_alternativa_con_cupo_falla():
+    with pytest.raises(ValidationError):
+        decision(alternative_product_code="CC_BASIC")
