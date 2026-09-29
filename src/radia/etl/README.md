@@ -52,6 +52,44 @@ Un JSON por tabla en `data/local/quality/` (`QualityReport` en `silver.py`):
 - Huérfanos por FK: `products.customer_id`, `transactions.customer_id` y `transactions.product_id`. `null` si la dimensión aún no tiene Silver.
 - Columnas de la spec que faltan en raw y columnas nuevas no previstas.
 
+## Gold
+
+```bash
+uv run radia-etl gold                          # corte = última transacción en Silver
+uv run radia-etl gold --snapshot 2026-06-17
+```
+
+- DuckDB sobre `silver/*.parquet`. Solo datos con fecha ≤ corte.
+- `gold/customer_features.parquet` (C1) y `gold/limit_labels.parquet` (C2, cupo en USD por producto de crédito con cupo > 0). Validados con su contrato antes de escribir.
+- USD con la tasa más reciente ≤ corte. Moneda del ingreso por país: MXN, COP, ARS. Saldos y cupos por `products.currency`.
+- Crédito = Credit Card, Personal Loan, Mortgage. Saldo, número de productos y utilización: solo `Active`. Mora: todo crédito no `Closed`.
+- Ingresos 6 meses: depósitos `Approved` con `amount_usd > 0`. Seis meses hacia atrás desde el corte; un mes sin depósitos cuenta 0.
+- Clientes con país, segmento o estado fuera del vocabulario, sin registro o registrados después del corte quedan fuera (se avisa en el log).
+- `credit_score` fuera de 300 a 850 se trata como nulo.
+- Etiqueta de mora (C5): **no se implementa**. El modelo de riesgo está fuera del alcance mínimo.
+
+### Supuestos a verificar con los datos reales
+
+- Dirección de la tasa: `usd = monto * exchange_rate` para `moneda -> USD`. Si solo hay `USD -> moneda`, se usa la inversa.
+- `customers` y `products` son la foto actual: segmento, saldo y mora no se reconstruyen a un corte pasado. Limitación declarada.
+- `current_balance` positivo = deuda. Negativo se toma como 0.
+- Valores exactos de `transaction_type`, `transaction_status` y `product_status` (mayúsculas, espacios).
+
+## Puntaje interno
+
+```bash
+uv run radia-etl score                         # pesos v0
+uv run radia-etl score --weights otro.yaml
+```
+
+- C3 de 150 a 950 en `gold/internal_score.parquet`. Determinista.
+- Pesos en `score_weights_v0.yaml`, validados con pydantic (`ScoreWeights`, inmutable).
+- **Pesos provisionales. Checkpoint de Pablo: no aprobados.**
+- Componentes lineales y recortados: buró (mayor peso), deuda sobre ingreso, estabilidad de ingresos, antigüedad, mora y uso del cupo.
+- Puntaje = base + puntos, recortado a [150, 950]. `breakdown_json` guarda los puntos por componente.
+- Sin `credit_score` o sin ingreso: puntaje nulo y desglose `{}`. La política lo manda al analista.
+- Las exclusiones (inactivo, mora > 30 días) viven en la política, no aquí. Ver [[propuesta]].
+
 ## Ofertas vigentes (C6)
 
 ```bash
