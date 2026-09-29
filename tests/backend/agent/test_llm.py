@@ -78,6 +78,7 @@ def test_otro_cliente_no_es_monto():
 
 def test_ingreso_declarado():
     assert classify("Gano diez veces más de lo que dice el banco").mentions_income
+    assert classify("Gano 30.000 al mes").declared_monthly_income == 30_000
     u = classify("Mi sueldo es 3000")
     assert u.declared_monthly_income == 3000
     assert u.amount is None
