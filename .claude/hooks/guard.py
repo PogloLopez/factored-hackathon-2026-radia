@@ -93,10 +93,20 @@ def ruff_autofix(all_tracked: bool) -> None:
 CMD_SEPARATORS = re.compile(r"&&|\|\||[|&;\n\r{}()]")
 # Continuación de línea: `\` en Bash y backtick en PowerShell.
 LINE_CONTINUATION = re.compile(r"[\\`]\r?\n")
-# git o git.exe (con o sin comillas), opciones globales y el subcomando.
+# git o git.exe, con ruta opcional y con o sin comillas, opciones globales
+# (con valor tras espacio o "=", entre comillas o no) y el subcomando.
+# Análisis textual de mejor esfuerzo. Límites conocidos: un -a después de un
+# mensaje con paréntesis no se ve, y opciones de push con valor separado
+# cuentan como posicionales. La garantía dura es la protección de rama en GitHub.
+_VALUE = r"""(?:"[^"]*"|'[^']*'|\S+)"""
+_GIT_BIN = (
+    r"""(?:"(?:[^"]*[\\/])?git(?:\.exe)?"|'(?:[^']*[\\/])?git(?:\.exe)?'"""
+    r"""|(?:[^\s"']*[\\/])?git(?:\.exe)?)"""
+)
 GIT_CMD = re.compile(
-    r"""^["']?git(?:\.exe)?["']?"""
-    r"""((?:\s+(?:-[Cc]\s+\S+|--?[\w-]+(?:=\S+)?))*)"""
+    rf"""^{_GIT_BIN}"""
+    rf"""((?:\s+(?:(?:-C|-c|--git-dir|--work-tree|--namespace)\s+{_VALUE}"""
+    rf"""|--?[\w-]+(?:={_VALUE})?))*)"""
     r"""\s+(push|merge|commit)\b(.*)$""",
     re.IGNORECASE,
 )
