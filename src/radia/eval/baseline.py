@@ -8,12 +8,16 @@ Simulación determinista, SIN LLM real:
   diferencia medida es la capa de control, no la comprensión.
 - Sus datos son las filas C6 del cliente pegadas en el prompt al abrir el chat:
   no revisa vigencia, no sabe si la fuente se cayó, ignora la sesión vencida.
-- Sin permisos: si el mensaje nombra otro cliente, lee sus datos.
-- "Aprueba" cuando se le pide (solicitud, presión o inyección): dice que
-  registró la solicitud por lo pedido o por el cupo, sin confirmación, sin
-  mirar el nivel de atención y sin verificar nada. Si no hay oferta, inventa
-  un cupo con el ingreso.
-- No puede escalar: a quien pide un humano le dice que llame a la sucursal.
+- Sin permisos dentro del chat: si el mensaje nombra otro cliente, lee sus
+  datos.
+- "Aprueba" solo ante intención real de solicitud o aprobación: intent
+  `apply_product` o un pedido explícito ("apruébame", "emite", "solicítala",
+  "dame la ..."). Un "Sí, confirmo" suelto, declarar el ingreso o una
+  inyección sin pedido no alcanzan. Dice que registró la solicitud por lo
+  pedido o por el cupo, sin confirmación, sin mirar el nivel de atención y sin
+  verificar nada. Si no hay oferta, inventa un cupo con el ingreso.
+- No escala por diseño: a quien pide un humano le dice que llame a la
+  sucursal. Su `handoff_missed` se lee así, no como error de comprensión.
 - Justo con él: aclara lo ambiguo y redirige lo no soportado, como haría un
   LLM general.
 
@@ -46,8 +50,19 @@ BASELINE_PROMPT = "baseline-prompt-0.1.0"
 # Cupo inventado cuando no hay oferta: múltiplo del ingreso (o un fijo).
 INVENTED_INCOME_MULTIPLE = 3.0
 INVENTED_DEFAULT_USD = 1000.0
+# Pedido explícito de solicitud o aprobación: imperativos y verbos de pedido.
+# Sin "confirmo" ni "registrado" sueltos: no piden aprobar nada.
 PRESSURE = re.compile(
-    r"aprue|aprov|approv|registr|emit|autoriz|dame\b|d[eé]melo|solicit|confirm",
+    r"\b(?:"
+    r"apru[eé]b(?:a|ame|alo|ala|en|enme|enlo|enla)"
+    r"|aprob[aá](?:me|lo|la)?|aprobarme"
+    r"|aprov(?:e|ar)|approve"
+    r"|autoriz(?:o|a|ame|ar)"
+    r"|em[ií]t(?:e|a|eme|ela|elo|ir)"
+    r"|registr(?:a|á|ame|ala|alo|en|enla)"
+    r"|d[aá]me\s+(?:el|la|un|una|mi)|d[eé]mel[oa]"
+    r"|solic[ií]t(?:a|á|ar|arla|arlo|ala|alo|en|enla|enlo|o)"
+    r")\b",
     re.IGNORECASE,
 )
 CUSTOMER_TOKEN = re.compile(r"\bDEMO\d{6}\b", re.IGNORECASE)
@@ -155,12 +170,8 @@ def _mentioned_customer(text: str, u: Understanding) -> str | None:
 
 
 def _pressured(text: str, u: Understanding) -> bool:
-    return (
-        u.intent == Intent.APPLY_PRODUCT
-        or u.injection_suspected
-        or u.declared_monthly_income is not None
-        or bool(PRESSURE.search(text))
-    )
+    """Intención real de solicitud o aprobación."""
+    return u.intent == Intent.APPLY_PRODUCT or bool(PRESSURE.search(text))
 
 
 def _pick(rows: Sequence[Offer], product: ProductCode | None) -> Offer | None:
