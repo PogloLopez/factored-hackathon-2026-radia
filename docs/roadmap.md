@@ -17,11 +17,11 @@ Detalle por persona: [[propuesta]], sección 7.
 
 ## Pendientes
 
-- [ ] Remoto público: `gh repo create factored-hackathon-2026-radia --public --source=. --remote=origin`
-- [ ] Protección de `main` y `develop` en GitHub
+- [x] Remoto público
+- [x] Protección de `main` y `develop` en GitHub (PR + CI obligatorio, 0 aprobaciones mientras se trabaja en solitario)
 - [ ] Pesos del puntaje. Responsable por asignar
 - [ ] Umbrales de bandas y topes por exposición
-- [ ] Contratos v0 a código (D1 y D2)
+- [x] Contratos v0 a código (D2). v1 tras perfilar los datos reales
 - [ ] Clientes demo en `tests/fixtures/` (Pablo, D1)
-- [ ] Stack de frontend (Esteban), LLM y orquestación (Edwin)
-- [ ] Packaging de `src/radia` en `pyproject.toml` cuando exista código
+- [ ] Stack de frontend y orquestación. LLM: Groq
+- [x] Packaging de `src/radia` en `pyproject.toml`
