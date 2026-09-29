@@ -54,6 +54,11 @@ def assert_blocked(cmd):
         "git push origin \\\nmain",
         "cd x && git push origin main",
         "$ git push origin main",
+        '& "C:\\Program Files\\Git\\bin\\git.exe" push origin main',
+        "/usr/bin/git push origin main",
+        'git -C "mi dir" push origin main',
+        "git --git-dir .git push origin main",
+        "git --work-tree=. push origin main",
     ],
 )
 def test_git_subcommands_detecta_push(cmd):
