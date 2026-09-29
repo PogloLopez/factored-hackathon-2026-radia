@@ -176,6 +176,10 @@ def test_env_bloqueado_y_example_permitido(env):
         '& "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe" s3 ls',
         "cd x && aws s3 ls",
         "echo hi | aws s3 ls",
+        "aws --profile x s3 sync s3://b/ ./d/",
+        "aws --region us-east-1 s3 ls",
+        "aws --no-sign-request s3 cp s3://b/k .",
+        "aws --debug s3api list-objects-v2 --bucket b",
     ],
 )
 def test_cli_aws_s3_bloqueada(env, cmd):

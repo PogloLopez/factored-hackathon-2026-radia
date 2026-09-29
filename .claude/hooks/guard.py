@@ -16,9 +16,11 @@ from pathlib import PurePath
 
 PROTECTED = {"main", "develop"}
 ENV_IN_TEXT = re.compile(r"(?<![\w.-])\.env(?!\.example)(\.[\w-]+)?(?![\w.-])")
-# aws o aws.exe (con ruta o comillas) seguido de s3 o s3api.
+# aws o aws.exe (con ruta o comillas), opciones globales y luego s3 o s3api.
 AWS_S3_CLI = re.compile(
-    r"""(?:^|[\s&|;({"'\\/])aws(?:\.exe)?["']?\s+s3(?:api)?\b""", re.IGNORECASE
+    r"""(?:^|[\s&|;({"'\\/])aws(?:\.exe)?["']?"""
+    r"""(?:\s+--?[\w-]+(?:[ =](?!s3(?:api)?\b)\S+)?)*\s+s3(?:api)?\b""",
+    re.IGNORECASE,
 )
 FILE_TOOLS = {"Read", "Edit", "Write", "MultiEdit", "NotebookEdit"}
 SHELL_TOOLS = {"Bash", "PowerShell"}
