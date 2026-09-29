@@ -1,5 +1,7 @@
 """Endpoints C8 con TestClient, sobre el orquestador real y el modelo falso."""
 
+import threading
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ from radia.backend.api.auth import ANALYST_USERNAME, DEMO_PASSWORD
 from radia.backend.api.state import ApiState
 from radia.config import Settings
 from radia.contracts.api import ChatResponse
+from radia.contracts.handoff import HandoffCase, HandoffType
 
 AUTOMATIC_CUSTOMER = "DEMO000001"  # Tarjeta básica automática (México).
 ANALYST_CUSTOMER = "DEMO000008"  # Préstamo personal al analista.
@@ -308,6 +311,60 @@ def test_advisor_cannot_write_on_closed_case(app, client, headers_for, advisor):
         json={"message": "hola"},
     )
     assert response.status_code == 409
+
+
+# --- Concurrencia -------------------------------------------------------------
+
+
+def _bare_case(n: int, kind: HandoffType) -> HandoffCase:
+    return HandoffCase(
+        case_id=f"CASE-T{n:06d}",
+        handoff_type=kind,
+        trigger_reason="prueba",
+        customer_id=AUTOMATIC_CUSTOMER,
+        session_id="SES-TEST",
+        request_summary="prueba",
+        open_questions=["¿qué falta?"],
+        created_at=datetime(2026, 9, 29, tzinfo=UTC),
+    )
+
+
+def test_inboxes_list_while_chat_adds_cases(app, client, analyst, advisor):
+    """Hilos que guardan casos mientras las bandejas listan: sin errores."""
+    cases = app.state.api.cases
+    per_writer = 200
+    errors: list[BaseException] = []
+
+    def writer(offset: int) -> None:
+        try:
+            for i in range(per_writer):
+                n = offset + 4 * i
+                kind = HandoffType.ADVISOR if n % 2 else HandoffType.ANALYST_REVIEW
+                cases.save(_bare_case(n, kind))
+        except BaseException as exc:  # noqa: BLE001 - se reporta en el assert
+            errors.append(exc)
+
+    writers = [threading.Thread(target=writer, args=(i,)) for i in range(4)]
+    for t in writers:
+        t.start()
+    try:
+        for _ in range(10):
+            assert client.get("/analyst/cases", headers=analyst).status_code == 200
+            assert client.get("/advisor/sessions", headers=advisor).status_code == 200
+    finally:
+        for t in writers:
+            t.join()
+    assert errors == []
+    assert len(cases.list_cases()) == 4 * per_writer
+
+
+def test_list_cases_returns_a_copy(app):
+    cases = app.state.api.cases
+    cases.save(_bare_case(1, HandoffType.ADVISOR))
+    listed = cases.list_cases()
+    cases.save(_bare_case(2, HandoffType.ADVISOR))
+    assert [c.case_id for c in listed] == ["CASE-T000001"]
+    assert len(cases.list_cases()) == 2
 
 
 # --- Configuración -------------------------------------------------------------
