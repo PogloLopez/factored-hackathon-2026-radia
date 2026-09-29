@@ -218,16 +218,20 @@ def _main_table(ours: SystemMetrics, theirs: SystemMetrics) -> list[str]:
             "LLM, ver supuestos",
         ],
         [
-            "Costo por caso intentado",
+            "Costo por caso",
             _usd(ours.cost_per_case_usd),
             _usd(theirs.cost_per_case_usd),
-            "todos los casos",
+            f"costo total / todos los casos ({ours.n_cases})",
         ],
         [
             "Costo por resolución automática exitosa",
             _usd(ours.cost_per_resolution_usd),
             _usd(theirs.cost_per_resolution_usd),
-            "resoluciones automáticas seguras",
+            (
+                "costo total / resoluciones automáticas seguras (Radia "
+                f"{ours.safe_auto_resolution.numerator}, baseline "
+                f"{theirs.safe_auto_resolution.numerator})"
+            ),
         ],
     ]
     return _table(["Métrica", "Radia", "Baseline", "Denominador"], rows)
