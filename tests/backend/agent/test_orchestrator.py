@@ -547,3 +547,24 @@ def test_handoff_fallido_tras_aceptar_limpia_la_sesion(tools, sink, offers_df):
     # La confirmación vieja ya no sirve.
     orch.confirm(session.session_id, conf, accept=True)
     assert last_trace(sink).outcome == Outcome.REFUSED
+
+
+def test_sesiones_vencidas_se_expulsan(tools, sink):
+    now = [tools.clock()]
+    orch = Orchestrator(
+        FakeLanguageModel(),
+        tools,
+        sink,
+        clock=lambda: now[0],
+        session_ttl=timedelta(minutes=30),
+        evict_after=timedelta(minutes=10),
+    )
+    old = orch.start_session("C1")
+    now[0] += timedelta(minutes=35)
+    # Dentro del margen sigue respondiendo que venció.
+    assert "venció" in orch.handle_message(old.session_id, "hola").reply
+    now[0] += timedelta(minutes=10)
+    fresh = orch.start_session("C2")
+    assert set(orch.sessions) == {fresh.session_id}
+    with pytest.raises(UnknownSession):
+        orch.handle_message(old.session_id, "hola")
