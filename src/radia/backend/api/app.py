@@ -136,12 +136,13 @@ def _chat_response(reply: ChatReply) -> ChatResponse:
 
 
 def _owned_session(state: ApiState, session_id: str, customer_id: str | None) -> None:
-    """404 si la sesión no existe; 403 si es de otro cliente."""
+    """404 si la sesión no existe o es de otro cliente.
+
+    Misma respuesta en ambos casos: así no se puede sondear si un id ajeno existe.
+    """
     session = state.orchestrator.sessions.get(session_id)
-    if session is None:
+    if session is None or session.customer_id != customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "sesión no encontrada")
-    if session.customer_id != customer_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "la sesión es de otro cliente")
 
 
 def _case_of_type(state: ApiState, case_id: str, kind: HandoffType) -> HandoffCase:

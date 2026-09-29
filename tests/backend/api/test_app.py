@@ -93,13 +93,13 @@ def test_analyst_cannot_chat(client, analyst):
     assert _chat(client, analyst, "hola").status_code == 403
 
 
-def test_other_customer_session_is_403(client, headers_for):
+def test_other_customer_session_is_404(client, headers_for):
     owner = headers_for(AUTOMATIC_CUSTOMER)
     intruder = headers_for(ANALYST_CUSTOMER)
     first = _chat(client, owner, "Quiero una tarjeta básica").json()
     session_id = first["session_id"]
 
-    assert _chat(client, intruder, "hola", session_id).status_code == 403
+    assert _chat(client, intruder, "hola", session_id).status_code == 404
     confirm = client.post(
         "/chat/confirm",
         headers=intruder,
@@ -109,7 +109,7 @@ def test_other_customer_session_is_403(client, headers_for):
             "accept": True,
         },
     )
-    assert confirm.status_code == 403
+    assert confirm.status_code == 404
 
 
 def test_unknown_session_is_404(client, headers_for):
