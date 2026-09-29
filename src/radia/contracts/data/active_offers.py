@@ -10,7 +10,11 @@ modelo de cupo (C4). Consumidores: tools del orquestador y la web.
 - Pasada `expires_at`, la oferta no se usa: el orquestador cae a un fallback
   seguro y nunca inventa una.
 - Sin puntaje (datos faltantes) nunca hay resolución automática.
-- La exposición no es columna: se deriva del producto con el YAML de la política.
+- `exposure` es la que usó la política: la del producto, o una mayor si el
+  monto pedido supera su tope.
+- Trazabilidad: `snapshot_date` y `score_version` dicen con qué corte y qué
+  puntaje se decidió. `generated_at` y `expires_at` van en UTC, sin zona.
+- La alternativa solo aparece cuando no hay cupo para el producto pedido.
 """
 
 import json
@@ -25,12 +29,13 @@ from radia.contracts.common import (
     CODE_PATTERN,
     AttentionLevel,
     Band,
+    Exposure,
     ProductCode,
     values,
 )
 from radia.contracts.data import validate
 
-CONTRACT_VERSION = "0.1.0"
+CONTRACT_VERSION = "0.2.0"
 
 
 def _is_code_list(raw: str, *, allow_empty: bool) -> bool:
@@ -50,6 +55,8 @@ class ActiveOffers(pa.DataFrameModel):
     customer_id: Series[str] = pa.Field(nullable=False)
     product_code: Series[str] = pa.Field(isin=values(ProductCode))
     attention_level: Series[str] = pa.Field(isin=values(AttentionLevel))
+    exposure: Series[str] = pa.Field(isin=values(Exposure))
+    snapshot_date: Series[pd.Timestamp] = pa.Field(nullable=False)
     # Nulos si el cliente no tiene puntaje (faltan datos).
     score: Series[pd.Int64Dtype] = pa.Field(ge=150, le=950, nullable=True)
     band: Series[str] = pa.Field(isin=values(Band), nullable=True)
@@ -65,6 +72,7 @@ class ActiveOffers(pa.DataFrameModel):
         isin=values(ProductCode), nullable=True
     )
     policy_version: Series[str] = pa.Field(nullable=False)
+    score_version: Series[str] = pa.Field(nullable=True)
     limit_model_version: Series[str] = pa.Field(nullable=True)
     # Trato preferencial (segmento Premium). No cambia la decisión de riesgo.
     preferential: Series[bool]
@@ -93,6 +101,10 @@ class ActiveOffers(pa.DataFrameModel):
     def automatic_needs_score_and_limit(cls, df: pd.DataFrame) -> pd.Series:
         automatic = df["attention_level"] == AttentionLevel.AUTOMATIC
         return ~automatic | (df["score"].notna() & df["offered_limit_usd"].notna())
+
+    @pa.dataframe_check
+    def alternative_only_without_limit(cls, df: pd.DataFrame) -> pd.Series:
+        return df["alternative_product_code"].isna() | df["offered_limit_usd"].isna()
 
     @pa.dataframe_check
     def limit_has_model_version(cls, df: pd.DataFrame) -> pd.Series:
@@ -139,6 +151,8 @@ def make_active_offers(
             "customer_id": rows["customer_id"].to_numpy(),
             "product_code": rows["product_code"].to_numpy(),
             "attention_level": level,
+            "exposure": rng.choice(values(Exposure), size=n),
+            "snapshot_date": rows["snapshot_date"].to_numpy(),
             "score": rows["score"].array,
             "band": rng.choice(values(Band), size=n),
             "offered_limit_usd": limit,
@@ -148,6 +162,7 @@ def make_active_offers(
             "alerts_json": "[]",
             "alternative_product_code": None,
             "policy_version": "mock-policy-0.0.0",
+            "score_version": rows["score_version"].to_numpy(),
             "limit_model_version": "mock-limit-0.0.0",
             "preferential": False,
             "synthetic_policy": True,
