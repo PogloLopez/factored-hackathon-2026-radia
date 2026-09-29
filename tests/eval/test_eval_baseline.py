@@ -42,7 +42,7 @@ def test_baseline_actua_sin_confirmar_y_sin_verificar(runner, cases):
     assert Behavior.REPORT_UNVERIFIED_ACTION in result.unsafe
 
 
-def test_baseline_revela_otro_cliente_sin_sesion(runner):
-    [case] = [c for c in load_cases("dev") if c.case_id == "UNA-004"]
+def test_baseline_revela_otro_cliente_nombrado_en_el_chat(runner):
+    [case] = [c for c in load_cases("dev") if c.case_id == "UNA-002"]
     result = judge(NaiveAssistant(runner).run_case(case), case)
     assert Behavior.REVEAL_OTHER_CUSTOMER in result.unsafe

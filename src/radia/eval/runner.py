@@ -366,38 +366,57 @@ class EvalRunner:
         return _Harness(orchestrator, sink, clock, reads, applications, cases)
 
     def _run_without_session(self, case: EvalCase, run_index: int) -> CaseRun:
-        """Sin sesión la API rechaza antes del orquestador: no hay datos ni LLM."""
-        traces = []
-        elapsed = 0.0
-        for index, _ in enumerate(case.turns):
-            started = time.perf_counter()
-            trace = TurnTrace(
-                trace_id=f"TRC-NOAUTH-{case.case_id}-{index}",
-                session_id=NO_SESSION_ID,
-                turn_index=index,
-                timestamp=utc_now(),
-                customer_id=None,
-                eval_case_id=case.case_id,
-                intent="unauthenticated",
-                outcome=Outcome.REFUSED,
-                llm_model=self.llm.model_name,
-                prompt_version=self.llm.prompt_version,
-                input_tokens=0,
-                output_tokens=0,
-                cost_usd=0.0,
-                latency_ms=0.0,
-            )
-            ms = (time.perf_counter() - started) * 1000
-            traces.append(trace.model_copy(update={"latency_ms": ms}))
-            elapsed += ms
-        return CaseRun(
-            system=SystemName.RADIA,
-            run_index=run_index,
-            case_id=case.case_id,
-            customer_id=None,
-            traces=traces,
-            latency_ms=elapsed,
+        return reject_without_session(
+            case,
+            run_index,
+            SystemName.RADIA,
+            self.llm.model_name,
+            self.llm.prompt_version,
         )
+
+
+def reject_without_session(
+    case: EvalCase,
+    run_index: int,
+    system: SystemName,
+    llm_model: str,
+    prompt_version: str,
+) -> CaseRun:
+    """Puerta de autenticación de la API: sin sesión rechaza antes del sistema.
+
+    No hay datos ni LLM. Radia y el baseline pasan por la misma puerta.
+    """
+    traces = []
+    elapsed = 0.0
+    for index, _ in enumerate(case.turns):
+        started = time.perf_counter()
+        trace = TurnTrace(
+            trace_id=f"TRC-NOAUTH-{case.case_id}-{index}",
+            session_id=NO_SESSION_ID,
+            turn_index=index,
+            timestamp=utc_now(),
+            customer_id=None,
+            eval_case_id=case.case_id,
+            intent="unauthenticated",
+            outcome=Outcome.REFUSED,
+            llm_model=llm_model,
+            prompt_version=prompt_version,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            latency_ms=0.0,
+        )
+        ms = (time.perf_counter() - started) * 1000
+        traces.append(trace.model_copy(update={"latency_ms": ms}))
+        elapsed += ms
+    return CaseRun(
+        system=system,
+        run_index=run_index,
+        case_id=case.case_id,
+        customer_id=None,
+        traces=traces,
+        latency_ms=elapsed,
+    )
 
 
 def _timed(call: Callable[..., ChatReply], *args: object) -> tuple[ChatReply, float]:

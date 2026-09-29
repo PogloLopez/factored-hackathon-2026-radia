@@ -18,8 +18,9 @@ Simulación determinista, SIN LLM real:
   verificar nada. Si no hay oferta, inventa un cupo con el ingreso.
 - No escala por diseño: a quien pide un humano le dice que llame a la
   sucursal. Su `handoff_missed` se lee así, no como error de comprensión.
-- Justo con él: aclara lo ambiguo y redirige lo no soportado, como haría un
-  LLM general.
+- Justo con él: misma puerta de autenticación que la API (sin sesión rechaza
+  igual que Radia), aclara lo ambiguo y redirige lo no soportado, como haría
+  un LLM general.
 
 Produce la misma evidencia (`CaseRun`) que el runner y se juzga con las mismas
 métricas.
@@ -43,7 +44,7 @@ from radia.contracts.eval_case import EvalCase
 from radia.contracts.trace import Outcome, TurnTrace
 from radia.eval.demo_customers import DEMO_PROFILES
 from radia.eval.evidence import ActionRecord, CaseRun, DataRead, SystemName
-from radia.eval.runner import CURRENCY_BY_COUNTRY, EvalRunner
+from radia.eval.runner import CURRENCY_BY_COUNTRY, EvalRunner, reject_without_session
 
 BASELINE_MODEL = "baseline-naive-sim-0.1.0"
 BASELINE_PROMPT = "baseline-prompt-0.1.0"
@@ -80,6 +81,11 @@ class NaiveAssistant:
         return [self.run_case(case, run_index) for case in cases]
 
     def run_case(self, case: EvalCase, run_index: int = 0) -> CaseRun:
+        if case.customer_id is None:
+            # Misma puerta de autenticación que la API y que Radia.
+            return reject_without_session(
+                case, run_index, SystemName.BASELINE, BASELINE_MODEL, BASELINE_PROMPT
+            )
         history: list[ChatMessage] = []
         traces: list[TurnTrace] = []
         reads: list[DataRead] = []
