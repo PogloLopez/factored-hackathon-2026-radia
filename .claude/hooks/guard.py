@@ -75,11 +75,8 @@ def ruff_autofix(all_tracked: bool, pathspecs: list[str] | None = None) -> None:
                 *pathspecs,
             )
         )
-    files = sorted(
-        f
-        for f in files
-        if not f.startswith(".claude/") and PurePath(f).suffix in RUFF_FORMAT
-    )
+    # Mismo alcance que el CI: todo el repo, incluido .claude/.
+    files = sorted(f for f in files if PurePath(f).suffix in RUFF_FORMAT)
     lint = [f for f in files if PurePath(f).suffix in RUFF_LINT]
     if not files:
         return
