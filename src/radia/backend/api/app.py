@@ -303,6 +303,8 @@ def create_app(
     ) -> AdvisorMessage:
         with state.lock:
             case = _case_of_type(state, case_id, HandoffType.ADVISOR)
+            if case.status in {CaseStatus.APPROVED, CaseStatus.REJECTED}:
+                raise HTTPException(status.HTTP_409_CONFLICT, "el caso ya está cerrado")
             if body.proposed_amount_usd is not None:
                 _check_amount(case, body.proposed_amount_usd)
             message = AdvisorMessage(
