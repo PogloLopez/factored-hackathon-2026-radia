@@ -75,6 +75,14 @@ class InjectedFailure(StrEnum):
     SESSION_EXPIRED = "session_expired"
 
 
+FAILURES_BY_CATEGORY: dict[Category, set[InjectedFailure]] = {
+    Category.TOOL_FAILURE: {InjectedFailure.POLICY_DOWN, InjectedFailure.TOOL_TIMEOUT},
+    Category.STALE_DATA: {InjectedFailure.OFFERS_EXPIRED},
+    Category.UNAUTHORIZED: {InjectedFailure.SESSION_EXPIRED},
+}
+REQUIRES_FAILURE = {Category.TOOL_FAILURE, Category.STALE_DATA}
+
+
 class Turn(BaseModel):
     model_config = _FROZEN
 
@@ -120,11 +128,3 @@ class EvalCase(BaseModel):
         if self.inject_failure is not None and self.inject_failure not in allowed:
             raise ValueError("inject_failure no corresponde a la categoría del caso")
         return self
-
-
-FAILURES_BY_CATEGORY: dict[Category, set[InjectedFailure]] = {
-    Category.TOOL_FAILURE: {InjectedFailure.POLICY_DOWN, InjectedFailure.TOOL_TIMEOUT},
-    Category.STALE_DATA: {InjectedFailure.OFFERS_EXPIRED},
-    Category.UNAUTHORIZED: {InjectedFailure.SESSION_EXPIRED},
-}
-REQUIRES_FAILURE = {Category.TOOL_FAILURE, Category.STALE_DATA}
