@@ -225,3 +225,29 @@ def test_falla_columna_extra(offers):
     df = offers.assign(extra=1)
     with pytest.raises(ERRORS):
         validate(ActiveOffers, df)
+
+
+def test_falla_automatico_sin_cupo(offers):
+    df = offers.copy()
+    i = df.index[
+        (df["attention_level"] == AttentionLevel.AUTOMATIC) & df["score"].notna()
+    ][0]
+    df.loc[i, ["offered_limit_usd", "negotiation_min_usd", "negotiation_max_usd"]] = (
+        None
+    )
+    with pytest.raises(ERRORS):
+        validate(ActiveOffers, df)
+
+
+@pytest.mark.parametrize("col", ["reasons_json", "alerts_json"])
+def test_falla_codigo_que_no_es_snake_case(offers, col):
+    df = offers.copy()
+    df.loc[0, col] = '["Banda alta"]'
+    with pytest.raises(ERRORS):
+        validate(ActiveOffers, df)
+
+
+def test_preferential_es_columna_obligatoria(offers):
+    assert "preferential" in offers.columns
+    with pytest.raises(ERRORS):
+        validate(ActiveOffers, offers.drop(columns="preferential"))

@@ -14,13 +14,20 @@ modelo de cupo (C4). Consumidores: tools del orquestador y la web.
 """
 
 import json
+import re
 
 import numpy as np
 import pandas as pd
 import pandera.pandas as pa
 from pandera.typing.pandas import Series
 
-from radia.contracts.common import AttentionLevel, Band, ProductCode, values
+from radia.contracts.common import (
+    CODE_PATTERN,
+    AttentionLevel,
+    Band,
+    ProductCode,
+    values,
+)
 from radia.contracts.data import validate
 
 CONTRACT_VERSION = "0.1.0"
@@ -34,7 +41,7 @@ def _is_code_list(raw: str, *, allow_empty: bool) -> bool:
     return (
         isinstance(parsed, list)
         and (allow_empty or len(parsed) > 0)
-        and all(isinstance(r, str) and r for r in parsed)
+        and all(isinstance(r, str) and re.match(CODE_PATTERN, r) for r in parsed)
     )
 
 
@@ -59,6 +66,8 @@ class ActiveOffers(pa.DataFrameModel):
     )
     policy_version: Series[str] = pa.Field(nullable=False)
     limit_model_version: Series[str] = pa.Field(nullable=True)
+    # Trato preferencial (segmento Premium). No cambia la decisión de riesgo.
+    preferential: Series[bool]
     synthetic_policy: Series[bool] = pa.Field(isin=[True])
     generated_at: Series[pd.Timestamp] = pa.Field(nullable=False)
     expires_at: Series[pd.Timestamp] = pa.Field(nullable=False)
@@ -81,10 +90,9 @@ class ActiveOffers(pa.DataFrameModel):
         return df["score"].isna() == df["band"].isna()
 
     @pa.dataframe_check
-    def no_automatic_without_score(cls, df: pd.DataFrame) -> pd.Series:
-        return ~(
-            df["score"].isna() & (df["attention_level"] == AttentionLevel.AUTOMATIC)
-        )
+    def automatic_needs_score_and_limit(cls, df: pd.DataFrame) -> pd.Series:
+        automatic = df["attention_level"] == AttentionLevel.AUTOMATIC
+        return ~automatic | (df["score"].notna() & df["offered_limit_usd"].notna())
 
     @pa.dataframe_check
     def limit_has_model_version(cls, df: pd.DataFrame) -> pd.Series:
@@ -136,11 +144,12 @@ def make_active_offers(
             "offered_limit_usd": limit,
             "negotiation_min_usd": limit * 0.8,
             "negotiation_max_usd": limit * 1.2,
-            "reasons_json": json.dumps(["mock"]),
+            "reasons_json": json.dumps(["mock_reason"]),
             "alerts_json": "[]",
             "alternative_product_code": None,
             "policy_version": "mock-policy-0.0.0",
             "limit_model_version": "mock-limit-0.0.0",
+            "preferential": False,
             "synthetic_policy": True,
             "generated_at": generated_at,
             "expires_at": generated_at + pd.Timedelta(days=ttl_days),

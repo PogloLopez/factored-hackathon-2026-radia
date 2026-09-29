@@ -24,6 +24,7 @@ from typing import Annotated, Literal, Protocol, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from radia.contracts.common import (
+    CODE_PATTERN,
     AttentionLevel,
     Band,
     CustomerStatus,
@@ -37,7 +38,7 @@ CONTRACT_VERSION = "0.1.0"
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-Code = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")]
+Code = Annotated[str, Field(pattern=CODE_PATTERN)]
 
 
 class CustomerRequest(BaseModel):
