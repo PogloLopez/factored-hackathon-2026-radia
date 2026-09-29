@@ -7,6 +7,10 @@
   oferta del cliente, vigente y de nivel automático. Registra el monto
   confirmado, que nunca supera el cupo. La política decide; la
   tool vuelve a chequear.
+- Una solicitud por oferta y cliente. Una segunda con otra confirmación se
+  deniega (`application_exists`): se decide denegar y no devolver la existente
+  para no reportar como nueva una acción que no ocurrió. El reintento con la
+  misma confirmación devuelve la existente (idempotente).
 - Reintentos acotados (tenacity) solo en fallas técnicas
   (`TransientToolError`). Una denegación nunca se reintenta.
 - Ofertas vencidas (`expires_at` pasado) no se devuelven. El orquestador cae a
@@ -177,6 +181,8 @@ class ApplicationStore(Protocol):
 
     def get(self, reference: str) -> Application | None: ...
 
+    def for_offer(self, customer_id: str, offer_id: str) -> Application | None: ...
+
 
 class CaseStore(Protocol):
     def save(self, case: HandoffCase) -> HandoffCase: ...
@@ -213,6 +219,16 @@ class InMemoryApplicationStore:
 
     def get(self, reference: str) -> Application | None:
         return self.applications.get(reference)
+
+    def for_offer(self, customer_id: str, offer_id: str) -> Application | None:
+        return next(
+            (
+                a
+                for a in self.applications.values()
+                if a.customer_id == customer_id and a.offer_id == offer_id
+            ),
+            None,
+        )
 
 
 class InMemoryCaseStore:
@@ -367,6 +383,11 @@ class ToolBox:
             # Se registra el monto confirmado, nunca más que el cupo de la oferta.
             if not 0 < pending.limit_usd <= offer.offered_limit_usd:
                 raise ToolDenied("amount_above_offer")
+            existing = self.applications.for_offer(session.customer_id, offer_id)
+            if existing is not None:
+                if existing.confirmation_id == confirmation_id:
+                    return existing
+                raise ToolDenied("application_exists")
             return self.applications.create(
                 Application(
                     reference=_new_id("APP"),
@@ -380,6 +401,18 @@ class ToolBox:
             )
 
         return self._run(calls, name, create)
+
+    def find_application(
+        self, session: Session, offer_id: str, *, calls: list[ToolCall]
+    ) -> Application | None:
+        """Solicitud ya registrada del cliente de la sesión para esa oferta."""
+        name = "find_application"
+        self._authorize(calls, name, session, session.customer_id)
+        return self._run(
+            calls,
+            name,
+            lambda: self.applications.for_offer(session.customer_id, offer_id),
+        )
 
     def get_application(
         self, session: Session, reference: str, *, calls: list[ToolCall]
