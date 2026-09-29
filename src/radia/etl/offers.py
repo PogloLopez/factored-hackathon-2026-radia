@@ -66,7 +66,11 @@ def _latest_snapshot(features: pd.DataFrame) -> pd.DataFrame:
 
 
 def _row(
-    decision: PolicyDecision, generated_at: datetime, expires_at: datetime
+    decision: PolicyDecision,
+    snapshot_date: pd.Timestamp,
+    score_version: str | None,
+    generated_at: datetime,
+    expires_at: datetime,
 ) -> dict:
     return {
         "offer_id": offer_id(
@@ -75,6 +79,8 @@ def _row(
         "customer_id": decision.customer_id,
         "product_code": decision.product_code.value,
         "attention_level": decision.attention_level.value,
+        "exposure": decision.exposure.value,
+        "snapshot_date": snapshot_date,
         "score": decision.score,
         "band": decision.band.value if decision.band else None,
         "offered_limit_usd": decision.offered_limit_usd,
@@ -88,6 +94,7 @@ def _row(
             else None
         ),
         "policy_version": decision.policy_version,
+        "score_version": score_version,
         "limit_model_version": decision.limit_model_version,
         "preferential": decision.preferential,
         "synthetic_policy": decision.synthetic_policy,
@@ -114,7 +121,7 @@ def build_offers(
 
     latest = _latest_snapshot(features)
     facts = latest.merge(
-        scores[["customer_id", "snapshot_date", "score"]],
+        scores[["customer_id", "snapshot_date", "score", "score_version"]],
         on=["customer_id", "snapshot_date"],
         how="left",
         validate="one_to_one",
@@ -141,7 +148,15 @@ def build_offers(
                     request=CustomerRequest(product_code=code),
                 )
             )
-            rows.append(_row(decision, generated_at, expires_at))
+            rows.append(
+                _row(
+                    decision,
+                    fact.snapshot_date,
+                    _none_if_na(fact.score_version),
+                    generated_at,
+                    expires_at,
+                )
+            )
 
     df = pd.DataFrame(rows, columns=list(ActiveOffers.to_schema().columns))
     return validate(ActiveOffers, df)
