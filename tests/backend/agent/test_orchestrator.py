@@ -17,10 +17,12 @@ from radia.backend.agent.llm import FakeLanguageModel, GroqLanguageModel
 from radia.backend.agent.orchestrator import Orchestrator, UnknownSession
 from radia.backend.agent.session import Currency, SessionState
 from radia.backend.agent.tools import (
+    Application,
     InMemoryApplicationStore,
     InMemoryCaseStore,
     InMemoryOfferRepository,
     ToolBox,
+    ToolFailed,
     TransientToolError,
 )
 from radia.backend.agent.tracing import InMemoryTraceSink
@@ -695,3 +697,36 @@ def test_dos_confirmaciones_simultaneas_crean_una_solicitud(tools, sink, offers_
     # Estado consistente: solicitud hecha, nada pendiente y sin handoff.
     assert session.state == SessionState.DONE and session.pending is None
     assert box.cases.cases == {}
+
+
+def test_solicitud_existente_tras_busqueda_caida_no_cae_a_handoff(
+    orch, sink, monkeypatch
+):
+    existing = orch.tools.applications.create(
+        Application(
+            reference="APP-PREVIA",
+            customer_id="C1",
+            offer_id="O1",
+            product_code=ProductCode.CC_BASIC,
+            limit_usd=450,
+            confirmation_id="CONF-PREVIA",
+            created_at=orch.tools.clock(),
+        )
+    )
+
+    def down(*args, **kwargs):
+        raise ToolFailed("find_application")
+
+    # La búsqueda cae: el orquestador no ve la solicitud y pide confirmar.
+    monkeypatch.setattr(orch.tools, "find_application", down)
+    session, [reply] = chat(orch, "C1", "Quiero una tarjeta básica")
+    conf = reply.pending_confirmation.confirmation_id
+    done = orch.confirm(session.session_id, conf, accept=True)
+    # La creación deniega el duplicado: se informa la existente, sin handoff.
+    assert existing.reference in done.reply and "No se creó otra" in done.reply
+    assert done.handoff_case_id is None and orch.tools.cases.cases == {}
+    assert done.application_reference is None and done.pending_confirmation is None
+    assert session.state != SessionState.HANDOFF
+    trace = last_trace(sink)
+    assert Behavior.SAFE_FALLBACK not in trace.behaviors
+    assert len(orch.tools.applications.applications) == 1
