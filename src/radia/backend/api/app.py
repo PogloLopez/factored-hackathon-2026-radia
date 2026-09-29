@@ -6,8 +6,10 @@ La app que levanta uvicorn está en `main.py`. Los tests usan `create_app`.
 - Chat y confirmación pasan por el orquestador: la decisión sale de C6.
 - Una sesión de chat es del cliente que la abrió. Otro cliente recibe 403.
 - El monto del asesor debe caer en el rango de negociación del caso.
+- Aprobar un caso `analyst_and_advisor` abre el caso de asesor de seguimiento.
 """
 
+import uuid
 from collections.abc import Callable
 from datetime import datetime
 from typing import Annotated
@@ -152,6 +154,27 @@ def _case_of_type(state: ApiState, case_id: str, kind: HandoffType) -> HandoffCa
     return case
 
 
+def _advisor_follow_up(case: HandoffCase, now: datetime) -> HandoffCase:
+    """Caso de asesor tras aprobar uno `analyst_and_advisor`.
+
+    Mismo expediente. La referencia al caso del analista va en el motivo y en
+    las acciones hechas.
+    """
+    return case.model_copy(
+        update={
+            "case_id": f"CASE-{uuid.uuid4().hex[:10].upper()}",
+            "handoff_type": HandoffType.ADVISOR,
+            "status": CaseStatus.PENDING,
+            "trigger_reason": f"analyst_approved:{case.case_id}",
+            "actions_taken": [
+                *case.actions_taken,
+                f"Aprobado por el analista en {case.case_id}.",
+            ],
+            "created_at": now,
+        }
+    )
+
+
 def _check_amount(case: HandoffCase, amount: float) -> None:
     """422 si el monto sale del rango de negociación o el caso no tiene rango."""
     decision = case.policy_decision
@@ -280,6 +303,13 @@ def create_app(
             updated = state.cases.save(
                 HandoffCase.model_validate(case.model_dump() | {"status": new_status})
             )
+            decision = case.policy_decision
+            if (
+                new_status == CaseStatus.APPROVED
+                and decision is not None
+                and decision.attention_level == AttentionLevel.ANALYST_AND_ADVISOR
+            ):
+                state.cases.save(_advisor_follow_up(updated, state.clock()))
         return AnalystDecisionResponse(
             case=updated,
             decision=body.decision,
