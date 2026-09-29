@@ -1,5 +1,7 @@
 """Tests del modelo falso de lenguaje y las plantillas."""
 
+from concurrent.futures import ThreadPoolExecutor
+
 import groq
 import pytest
 
@@ -331,3 +333,21 @@ def test_groq_ingreso_declarado_no_es_monto_pedido():
     assert u.declared_monthly_income == 8000
     assert u.amount is None
     assert u.amount == classify("gano 8000").amount
+
+
+def test_groq_anota_cada_llamada_en_el_recolector_del_turno():
+    llm = GroqLanguageModel(NO_ENV, client=_FakeGroqClient('{"intent": "greeting"}'))
+    llm.classify("hola", [])  # otro turno: no pasa recolector
+    mine = []
+    llm.classify("hola", [], usage=mine)
+    llm.render("clarify", {"language": "es"}, usage=mine)
+    assert [u.input_tokens for u in mine] == [100, 100]
+    assert llm.usage.input_tokens == 300
+
+
+def test_groq_acumulado_global_seguro_entre_hilos():
+    llm = GroqLanguageModel(NO_ENV, client=_FakeGroqClient('{"intent": "greeting"}'))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda _: llm.classify("hola", []), range(200)))
+    assert llm.usage.input_tokens == 200 * 100
+    assert llm.usage.output_tokens == 200 * 20

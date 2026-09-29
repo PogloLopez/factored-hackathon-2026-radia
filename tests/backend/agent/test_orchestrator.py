@@ -10,7 +10,7 @@ from datetime import timedelta
 import pytest
 from tenacity import wait_none
 
-from radia.backend.agent.llm import FakeLanguageModel
+from radia.backend.agent.llm import FakeLanguageModel, GroqLanguageModel
 from radia.backend.agent.orchestrator import Orchestrator, UnknownSession
 from radia.backend.agent.session import Currency, SessionState
 from radia.backend.agent.tools import (
@@ -21,6 +21,7 @@ from radia.backend.agent.tools import (
     TransientToolError,
 )
 from radia.backend.agent.tracing import InMemoryTraceSink
+from radia.config import Settings
 from radia.contracts.common import AttentionLevel, ProductCode
 from radia.contracts.eval_case import Behavior
 from radia.contracts.handoff import HandoffType, Priority
@@ -608,3 +609,31 @@ def test_segundo_pedido_de_la_misma_oferta_no_crea_duplicado(orch, sink):
     assert done.application_reference in again.reply
     assert len(orch.tools.applications.applications) == 1
     assert last_trace(sink).application_reference is None
+
+
+class _Completions:
+    def create(self, **kwargs):
+        msg = type("Msg", (), {"content": '{"intent": "greeting"}'})()
+        choice = type("Choice", (), {"message": msg})()
+        usage = type("U", (), {"prompt_tokens": 100, "completion_tokens": 20})()
+        return type("Resp", (), {"choices": [choice], "usage": usage})()
+
+
+class NoisyGroq(GroqLanguageModel):
+    """Otro turno gasta en medio de este: el acumulado global crece."""
+
+    def classify(self, message, history, *, usage=None):
+        self.render("clarify", {"language": "es"})  # llamada ajena al turno
+        return super().classify(message, history, usage=usage)
+
+
+def test_uso_del_turno_no_mezcla_llamadas_de_otros_turnos(tools, sink):
+    client = type("Client", (), {})()
+    client.chat = type("Chat", (), {"completions": _Completions()})()
+    llm = NoisyGroq(Settings(_env_file=None), client=client)
+    orch = Orchestrator(llm, tools, sink, clock=tools.clock)
+    chat(orch, "C1", "Hola")
+    trace = last_trace(sink)
+    # Propias: classify y render del saludo. La ajena no entra al trace.
+    assert (trace.input_tokens, trace.output_tokens) == (200, 40)
+    assert llm.usage.input_tokens == 300
