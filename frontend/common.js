@@ -45,12 +45,15 @@ const Radia = (() => {
 
   // --- Token: solo en memoria de la pestaña, nunca en la URL ---------------
 
+  // Devuelve false si el navegador no permite sessionStorage: la sesión no
+  // sobreviviría al cambio de página y el login quedaría en un bucle mudo.
   function saveAuth(auth) {
     memoryAuth = auth;
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
+      return true;
     } catch {
-      // Sin sessionStorage: queda solo en memoria.
+      return false;
     }
   }
 
