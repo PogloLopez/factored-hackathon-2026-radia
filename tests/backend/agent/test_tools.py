@@ -177,3 +177,14 @@ def test_error_de_tool_no_filtra_el_mensaje(tools, calls):
         box.get_active_offers(session(), "C1", calls=calls)
     call = calls[0]
     assert call.error == "RuntimeError"
+
+
+def test_segunda_solicitud_de_la_misma_oferta_denegada(tools, calls):
+    first = tools.create_application(
+        session(pending=accepted()), "O1", "CONF-1", calls=calls
+    )
+    s = session(pending=accepted(confirmation_id="CONF-2"))
+    with pytest.raises(ToolDenied, match="application_exists"):
+        tools.create_application(s, "O1", "CONF-2", calls=calls)
+    assert list(tools.applications.applications) == [first.reference]
+    assert tools.find_application(s, "O1", calls=calls) == first
