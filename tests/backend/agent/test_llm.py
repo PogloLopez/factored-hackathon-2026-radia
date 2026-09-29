@@ -257,3 +257,29 @@ def test_mensaje_con_fecha_no_rompe_el_turno():
     u = classify("Quiero un préstamo de 1.000.000,50 para el 12.05.2026")
     assert u.product_code == ProductCode.PERSONAL_LOAN
     assert u.amount is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Perdí mi empleo, quiero un préstamo",
+        "Perdi meu emprego, preciso de um empréstimo",
+        "Quiero invertir en una hipoteca",
+    ],
+)
+def test_pedido_de_credito_gana_al_tema_no_soportado(text):
+    u = classify(text)
+    assert u.intent == Intent.APPLY_PRODUCT
+    assert u.unsupported_topic is None
+
+
+@pytest.mark.parametrize(
+    ("text", "topic"),
+    [
+        ("Me robaron mi tarjeta de oro", UnsupportedTopic.LOST_CARD),
+        ("Quiero poner una queja por mi préstamo", UnsupportedTopic.COMPLAINT),
+    ],
+)
+def test_tema_no_soportado_sobre_un_producto_sigue_redirigiendo(text, topic):
+    u = classify(text)
+    assert u.intent == Intent.UNSUPPORTED and u.unsupported_topic == topic
