@@ -1,7 +1,13 @@
 """C1. Features Gold por cliente y fecha de corte.
 
 Productor: ETL. Consumidores: modelos, puntaje interno y política.
-Montos en USD. Las etiquetas viven en C2, separadas a propósito para evitar leakage.
+
+- Las etiquetas viven en C2, separadas a propósito para evitar leakage.
+- Montos en USD. El ingreso del diccionario viene en moneda local y el ETL lo
+  convierte con `daily_exchange_rates` a la fecha de corte.
+- Solo datos con fecha menor o igual a `snapshot_date`, incluidos los agregados de 6 meses.
+- Un cliente sin productos de crédito tiene 0 en saldo, número de productos y
+  días de mora, no nulo.
 """
 
 import numpy as np
@@ -13,6 +19,15 @@ from radia.contracts.common import Country, CustomerStatus, Segment, values
 from radia.contracts.data import validate
 
 CONTRACT_VERSION = "0.1.0"
+
+# Features que son consecuencia del cupo asignado. El modelo de cupo (C4) no
+# puede usarlas: el cupo se despeja de saldo / utilización. El puntaje y la
+# política sí las usan.
+LIMIT_MODEL_EXCLUDED_FEATURES = (
+    "credit_utilization",
+    "total_credit_balance_usd",
+    "debt_to_income",
+)
 
 
 class GoldCustomerFeatures(pa.DataFrameModel):
