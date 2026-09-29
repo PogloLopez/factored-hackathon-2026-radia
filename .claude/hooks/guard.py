@@ -15,6 +15,7 @@ from pathlib import PurePath
 PROTECTED = {"main", "develop"}
 ENV_IN_TEXT = re.compile(r"(?<![\w.-])\.env(?!\.example)(\.[\w-]+)?(?![\w.-])")
 FILE_TOOLS = {"Read", "Edit", "Write", "MultiEdit", "NotebookEdit"}
+SHELL_TOOLS = {"Bash", "PowerShell"}
 
 
 def block(reason: str) -> None:
@@ -121,7 +122,7 @@ def main() -> None:
         path = inp.get("file_path") or inp.get("notebook_path") or ""
         if is_secret_path(path):
             block(f"acceso a {path} no permitido.")
-    elif tool == "Bash":
+    elif tool in SHELL_TOOLS:
         check_bash(inp.get("command", ""))
     elif tool in {"Grep", "Glob"}:
         target = f"{inp.get('path', '')} {inp.get('glob', '')} {inp.get('pattern', '')}"
