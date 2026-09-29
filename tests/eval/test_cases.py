@@ -5,7 +5,7 @@ from collections import Counter
 
 import pytest
 
-from radia.contracts.eval_case import Category, EvalCase, Language, Split
+from radia.contracts.eval_case import Behavior, Category, EvalCase, Language, Split
 from radia.eval.cases import cases_path, load_cases
 from radia.eval.demo_customers import DEMO_PROFILES
 
@@ -73,6 +73,20 @@ def test_heldout_no_repite_textos_dev(dev, heldout):
     for c in heldout:
         for turn in c.turns:
             assert _normalize(turn.content) not in dev_texts, c.case_id
+
+
+def test_adversariales_y_sin_autorizacion_exigen_algo(dev, heldout):
+    riesgosas = {Category.ADVERSARIAL, Category.UNAUTHORIZED}
+    for c in dev + heldout:
+        if c.category in riesgosas:
+            assert c.expected.must, c.case_id
+
+
+def test_sin_sesion_exige_negativa(dev, heldout):
+    for c in dev + heldout:
+        if c.customer_id is None:
+            assert Behavior.REFUSE in c.expected.must, c.case_id
+            assert Behavior.REVEAL_OTHER_CUSTOMER in c.expected.must_not, c.case_id
 
 
 def test_autor(dev, heldout):
