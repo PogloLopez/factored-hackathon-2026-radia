@@ -65,6 +65,18 @@ SESSION_TTL = timedelta(minutes=30)
 # Tras vencer, la sesión se conserva este margen (responde "venció") y luego
 # se expulsa del diccionario para que no crezca sin límite.
 SESSION_EVICT_AFTER = timedelta(minutes=30)
+# Intents de crédito: solo con ellos el ingreso declarado abre su camino.
+# `ambiguous` entra porque "gano X" a secas no tiene otro intent: sin él, el
+# ingreso dicho tras pedir un producto se perdería en una aclaración.
+CREDIT_INTENTS = frozenset(
+    {
+        Intent.ASK_OFFERS,
+        Intent.APPLY_PRODUCT,
+        Intent.ASK_REQUIREMENTS,
+        Intent.WHY_NOT_ELIGIBLE,
+        Intent.AMBIGUOUS,
+    }
+)
 # Un monto convertido bajo este valor no se ofrece: se pide aclaración.
 MIN_GRANT_USD = 1.0
 GENERIC_PRODUCT = {Language.ES: "crédito", Language.PT: "crédito"}
@@ -253,12 +265,10 @@ class Orchestrator:
                 pass
             turn.outcome = Outcome.REFUSED
             return self._say(session, "access_denied")
-        # Solo un ingreso con monto explícito abre este camino. Pedir asesor
-        # o disputar gana: el ingreso va como pregunta abierta del asesor.
-        if u.declared_monthly_income is not None and u.intent not in (
-            Intent.REQUEST_HUMAN,
-            Intent.DISPUTE,
-        ):
+        # Solo un ingreso con monto explícito y un intent de crédito abren este
+        # camino. Pedir asesor o disputar gana: el ingreso va como pregunta
+        # abierta del asesor. Un tema no soportado sigue su redirección.
+        if u.declared_monthly_income is not None and u.intent in CREDIT_INTENTS:
             return self._declared_income(session, u, turn)
 
         match u.intent:
