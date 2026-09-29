@@ -95,3 +95,39 @@ def test_manifest_created_at_con_zona():
     )
     assert m.total_bytes == 0
     assert m.summary() == {}
+
+
+def test_falla_parcial_guarda_los_exitos(client, tmpdir_path, monkeypatch):
+    m = s3.build_manifest(client, BUCKET, "data/", ("customers", "transactions"))
+    real = client.download_file
+    bad = "data/transactions/year=2026/month=06/day=17/part-0.csv"
+
+    def flaky(bucket, key, filename, **kw):
+        if key == bad:
+            raise OSError("red caída")
+        return real(bucket, key, filename, **kw)
+
+    monkeypatch.setattr(client, "download_file", flaky)
+    with pytest.raises(OSError):
+        s3.download(client, m, tmpdir_path, max_concurrency=2)
+    # Lo que sí llegó queda anotado: el reintento solo pide el que falló.
+    assert [e.key for e in s3.pending_entries(m, tmpdir_path)] == [bad]
+    assert not list(tmpdir_path.rglob("*.part"))
+
+
+def test_estado_corrupto_cuenta_como_vacio(tmpdir_path):
+    (tmpdir_path / "_etags.json").write_text("{corrupto", encoding="utf-8")
+    assert s3._load_state(tmpdir_path) == {}
+
+
+def test_clave_que_sale_de_raw_dir_falla(tmpdir_path):
+    with pytest.raises(ValueError):
+        s3._target(tmpdir_path, "../fuera.csv")
+
+
+def test_credenciales_incompletas_fallan():
+    from radia.config import Settings
+
+    settings = Settings(_env_file=None, aws_access_key_id="solo-la-clave")
+    with pytest.raises(ValueError):
+        s3.make_client(settings)
