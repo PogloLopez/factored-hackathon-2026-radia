@@ -9,6 +9,7 @@ import typer
 from radia.config import CREDIT_TABLES, get_settings
 from radia.etl import s3
 from radia.etl.bronze import build_bronze
+from radia.etl.offers import run_offers_job
 from radia.etl.silver import build_silver
 from radia.etl.tables import TableSpec, select_tables
 
@@ -117,3 +118,14 @@ def silver(tables: TablesOption = None) -> None:
             f"cast={sum(r.cast_failures.values())} huerfanos={r.orphans}"
         )
     typer.echo(f"Reportes: {settings.data_dir / 'quality'}")
+
+
+@app.command()
+def offers() -> None:
+    """Materializa las ofertas vigentes (C6) desde C1 y C3 con la política (C7)."""
+    try:
+        path = run_offers_job(get_settings())
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Ofertas: {path}")
