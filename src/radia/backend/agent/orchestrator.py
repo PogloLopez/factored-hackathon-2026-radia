@@ -35,6 +35,7 @@ from radia.backend.agent.llm import (
     Role,
     Understanding,
     UnsupportedTopic,
+    Usage,
     fill_template,
     format_usd,
     join_items,
@@ -145,6 +146,8 @@ class _Turn(BaseModel):
     application_reference: str | None = None
     # Recolector de tools de ESTE turno: nada compartido entre turnos.
     calls: list[ToolCall] = Field(default_factory=list)
+    # Recolector del uso del LLM de ESTE turno, una entrada por llamada.
+    llm_usage: list[Usage] = Field(default_factory=list)
 
     def use_offer(self, offer: Offer) -> None:
         self.rule_ids += offer.reasons + offer.alerts
@@ -208,10 +211,10 @@ class Orchestrator:
 
     def handle_message(self, session_id: str, message: str) -> ChatReply:
         session = self._session(session_id)
-        started, usage_before = time.perf_counter(), self.llm.usage
+        started = time.perf_counter()
         if not session.is_active(self.clock()):
             turn = _Turn(intent="session_expired", outcome=Outcome.REFUSED)
-            text = self._say(session, "session_expired")
+            text = self._say(session, turn, "session_expired")
         elif session.state == SessionState.HANDOFF:
             # El caso ya está con una persona: respuesta fija, sin LLM ni gasto.
             # El idioma de la sesión no cambia.
@@ -224,24 +227,26 @@ class Orchestrator:
                 },
             )
         else:
-            understanding = self.llm.classify(message, session.history)
+            # El intent sale de `classify`: su uso se anota antes de tener turno.
+            llm_usage: list[Usage] = []
+            understanding = self.llm.classify(message, session.history, usage=llm_usage)
             session.language = understanding.language
-            turn = _Turn(intent=understanding.intent.value)
+            turn = _Turn(intent=understanding.intent.value, llm_usage=llm_usage)
             text = self._route(session, understanding, turn)
         session.remember(ChatMessage(role=Role.CUSTOMER, content=message))
-        return self._finish(session, turn, text, started, usage_before)
+        return self._finish(session, turn, text, started)
 
     def confirm(self, session_id: str, confirmation_id: str, accept: bool) -> ChatReply:
         """Botón Sí o No del cliente. Es la única vía para ejecutar una acción."""
         session = self._session(session_id)
-        started, usage_before = time.perf_counter(), self.llm.usage
+        started = time.perf_counter()
         turn = _Turn(intent="confirm")
         if not session.is_active(self.clock()):
             turn.intent, turn.outcome = "session_expired", Outcome.REFUSED
-            text = self._say(session, "session_expired")
+            text = self._say(session, turn, "session_expired")
         else:
             text = self._confirm(session, turn, confirmation_id, accept)
-        return self._finish(session, turn, text, started, usage_before)
+        return self._finish(session, turn, text, started)
 
     # --- Ruteo ---------------------------------------------------------------
 
@@ -255,7 +260,7 @@ class Orchestrator:
 
         if u.injection_suspected:
             turn.outcome = Outcome.REFUSED
-            return self._say(session, "injection_refused")
+            return self._say(session, turn, "injection_refused")
         if u.other_customer_id and u.other_customer_id != session.customer_id:
             try:
                 self.tools.get_active_offers(
@@ -264,7 +269,7 @@ class Orchestrator:
             except ToolDenied:
                 pass
             turn.outcome = Outcome.REFUSED
-            return self._say(session, "access_denied")
+            return self._say(session, turn, "access_denied")
         # Solo un ingreso con monto explícito y un intent de crédito abren este
         # camino. Pedir asesor o disputar gana: el ingreso va como pregunta
         # abierta del asesor. Un tema no soportado sigue su redirección.
@@ -278,7 +283,7 @@ class Orchestrator:
                 template = UNSUPPORTED_TEMPLATE.get(
                     u.unsupported_topic or UnsupportedTopic.OTHER, "unsupported_other"
                 )
-                return self._say(session, template)
+                return self._say(session, turn, template)
             case Intent.AMBIGUOUS:
                 return self._clarify(session, turn)
             case Intent.REQUEST_HUMAN | Intent.DISPUTE:
@@ -316,13 +321,15 @@ class Orchestrator:
                 )
                 for o in automatic
             ]
-            return self._say(session, "offers_list", offers=join_items(items, lang))
+            return self._say(
+                session, turn, "offers_list", offers=join_items(items, lang)
+            )
         if review:
             names = [product_name(o.product_code, lang) for o in review]
             return self._say(
-                session, "offers_review_only", products=join_items(names, lang)
+                session, turn, "offers_review_only", products=join_items(names, lang)
             )
-        return self._say(session, "no_offers")
+        return self._say(session, turn, "no_offers")
 
     def _apply(self, session: Session, u: Understanding, turn: _Turn) -> str:
         product = u.product_code or session.focus_product
@@ -356,6 +363,7 @@ class Orchestrator:
                 # Una solicitud por oferta: no se pide confirmar un duplicado.
                 return self._say(
                     session,
+                    turn,
                     "application_exists",
                     product=product_name(product, session.language),
                     reference=existing.reference,
@@ -434,7 +442,7 @@ class Orchestrator:
         turn.behaviors.append(Behavior.REQUEST_CONFIRMATION)
         turn.attention_level = AttentionLevel.AUTOMATIC
         return self._say(
-            session, "confirm_request", product=name, limit=_usd_exact(limit)
+            session, turn, "confirm_request", product=name, limit=_usd_exact(limit)
         )
 
     def _confirm(
@@ -447,11 +455,11 @@ class Orchestrator:
             or pending.confirmation_id != confirmation_id
         ):
             turn.outcome = Outcome.REFUSED
-            return self._say(session, "nothing_pending")
+            return self._say(session, turn, "nothing_pending")
         if not accept:
             session.pending = None
             session.move_to(SessionState.IDLE)
-            return self._say(session, "application_cancelled")
+            return self._say(session, turn, "application_cancelled")
 
         session.pending = pending.model_copy(update={"accepted": True})
         product = pending.product_code
@@ -496,6 +504,7 @@ class Orchestrator:
         turn.application_reference = application.reference
         return self._say(
             session,
+            turn,
             "application_created",
             product=product_name(product, session.language),
             reference=application.reference,
@@ -650,9 +659,9 @@ class Orchestrator:
         if offer.attention_level == AttentionLevel.AUTOMATIC:
             limit = format_usd(offer.offered_limit_usd or 0)
             return self._say(
-                session, "requirements_automatic", product=name, limit=limit
+                session, turn, "requirements_automatic", product=name, limit=limit
             )
-        return self._say(session, "requirements_review", product=name)
+        return self._say(session, turn, "requirements_review", product=name)
 
     def _explain_not_eligible(self, session: Session, turn: _Turn, offer: Offer) -> str:
         lang = session.language
@@ -663,22 +672,23 @@ class Orchestrator:
             alternative = product_name(offer.alternative_product_code, lang)
             return self._say(
                 session,
+                turn,
                 "not_eligible_with_alternative",
                 alternative=alternative,
                 **facts,
             )
-        return self._say(session, "not_eligible", **facts)
+        return self._say(session, turn, "not_eligible", **facts)
 
     def _clarify(self, session: Session, turn: _Turn) -> str:
         turn.outcome = Outcome.CLARIFICATION
         turn.behaviors.append(Behavior.ASK_CLARIFICATION)
-        return self._say(session, "clarify")
+        return self._say(session, turn, "clarify")
 
     def _info_fallback(self, session: Session, turn: _Turn) -> str:
         """Consulta sin datos confiables: no se inventa nada, se pide reintentar."""
         turn.outcome = Outcome.FALLBACK
         turn.behaviors.append(Behavior.SAFE_FALLBACK)
-        return self._say(session, "fallback_unavailable")
+        return self._say(session, turn, "fallback_unavailable")
 
     def _fallback_handoff(
         self,
@@ -772,7 +782,7 @@ class Orchestrator:
             )
         lang = session.language
         name = product_name(product, lang) if product else GENERIC_PRODUCT[lang]
-        return self._say(session, template, product=name, case_id=case.case_id)
+        return self._say(session, turn, template, product=name, case_id=case.case_id)
 
     # --- Soporte ---------------------------------------------------------------
 
@@ -820,9 +830,13 @@ class Orchestrator:
     ) -> Offer | None:
         return self._pick(self._load_offers(session, turn), product)
 
-    def _say(self, session: Session, template_id: str, **facts: object) -> str:
+    def _say(
+        self, session: Session, turn: _Turn, template_id: str, **facts: object
+    ) -> str:
         return self.llm.render(
-            template_id, {"language": session.language.value, **facts}
+            template_id,
+            {"language": session.language.value, **facts},
+            usage=turn.llm_usage,
         )
 
     def _finish(
@@ -831,9 +845,8 @@ class Orchestrator:
         turn: _Turn,
         text: str,
         started: float,
-        usage_before,
     ) -> ChatReply:
-        usage = self.llm.usage.minus(usage_before)
+        usage = sum(turn.llm_usage, Usage())
         case = turn.handoff
         trace = TurnTrace(
             trace_id=f"TRC-{uuid.uuid4().hex}",

@@ -498,13 +498,13 @@ class SpyLanguageModel(FakeLanguageModel):
         super().__init__()
         self.llm_calls = 0
 
-    def classify(self, message, history):
+    def classify(self, message, history, *, usage=None):
         self.llm_calls += 1
-        return super().classify(message, history)
+        return super().classify(message, history, usage=usage)
 
-    def render(self, template_id, facts):
+    def render(self, template_id, facts, *, usage=None):
         self.llm_calls += 1
-        return super().render(template_id, facts)
+        return super().render(template_id, facts, usage=usage)
 
 
 def test_handoff_responde_sin_llm_ni_cambiar_idioma(tools, sink):

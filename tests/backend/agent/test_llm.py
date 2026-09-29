@@ -101,11 +101,10 @@ def test_render_usa_idioma_de_los_hechos():
     assert "conta" in pt
 
 
-def test_usage_suma_y_resta():
+def test_usage_suma():
     a = Usage(input_tokens=10, output_tokens=5, cost_usd=0.1)
     b = a + Usage(input_tokens=1, output_tokens=1, cost_usd=0.05)
-    delta = b.minus(a)
-    assert (delta.input_tokens, delta.output_tokens) == (1, 1)
+    assert (b.input_tokens, b.output_tokens) == (11, 6)
 
 
 class _Completions:
