@@ -7,10 +7,12 @@
 #   x >= x_high -> points_high
 #   x nulo      -> missing_points
 # Puntaje = base + suma de componentes, redondeado y recortado a [150, 950].
-# Rango teórico con estos pesos: 150 + [-200, 800] -> recortado a [150, 950].
+# Rango teórico con estos pesos: 300 + [-150, 650] = [150, 950], sin recorte:
+# el mejor perfil llega justo a 950 y el peor justo a 150.
+# `ScoreWeights` rechaza pesos cuyo rango teórico se salga de [150, 950].
 
 score_version: "v0-provisional"
-base: 150
+base: 300
 
 components:
   # Puntaje del buró: el de mayor peso.
@@ -19,7 +21,7 @@ components:
     x_low: 300
     x_high: 850
     points_low: 0
-    points_high: 400
+    points_high: 300
     missing_points: 0  # sin buró el puntaje queda nulo de todos modos
 
   # Saldo de crédito sobre ingreso mensual. Penaliza el endeudamiento.
@@ -30,16 +32,16 @@ components:
     feature: debt_to_income
     x_low: 0.0
     x_high: 36.0
-    points_low: 100
-    points_high: -100
-    missing_points: -100  # ingreso 0: no se puede medir la capacidad de pago
+    points_low: 75
+    points_high: -75
+    missing_points: -75  # ingreso 0: no se puede medir la capacidad de pago
 
   # Coeficiente de variación de depósitos mensuales (6 meses). Menor es mejor.
   income_stability:
     feature: income_stability_6m
     x_low: 0.0
     x_high: 1.5
-    points_low: 100
+    points_low: 75
     points_high: 0
     missing_points: 0  # sin depósitos en la ventana
 
@@ -49,7 +51,7 @@ components:
     x_low: 0
     x_high: 60
     points_low: 0
-    points_high: 100
+    points_high: 75
     missing_points: 0
 
   # Máximo de días de mora en crédito no cerrado.
@@ -57,8 +59,8 @@ components:
     feature: max_days_past_due
     x_low: 0
     x_high: 90
-    points_low: 100
-    points_high: -100
+    points_low: 75
+    points_high: -75
     missing_points: 0
 
   # Saldo sobre cupo de tarjetas. Hasta 30 % no penaliza.
@@ -66,6 +68,6 @@ components:
     feature: credit_utilization
     x_low: 0.3
     x_high: 1.0
-    points_low: 100
+    points_low: 50
     points_high: 0
-    missing_points: 50  # sin tarjeta con cupo: neutro
+    missing_points: 25  # sin tarjeta con cupo: neutro

@@ -6,7 +6,9 @@ Los pesos viven en un YAML validado con pydantic (`ScoreWeights`). Los de
 Cálculo por cliente:
 1. Cada componente convierte una feature en puntos, lineal entre dos puntos y
    recortado en los extremos. Un valor nulo recibe `missing_points`.
-2. Puntaje = base + suma de puntos, redondeado y recortado a [150, 950].
+2. Puntaje = base + suma de puntos, redondeado y recortado a [150, 950]. Los
+   pesos deben tener su rango teórico dentro de [150, 950] (se valida al
+   cargar), así el recorte no aplana a los mejores ni a los peores clientes.
 3. Si falta `credit_score` o `monthly_income_usd`, el puntaje es nulo y el
    desglose queda vacío: la política manda el caso al analista.
 
@@ -73,6 +75,12 @@ class Component(BaseModel):
             raise ValueError("x_low debe ser menor que x_high")
         return self
 
+    @property
+    def bounds(self) -> tuple[float, float]:
+        """Mínimo y máximo de puntos posibles, incluido el valor faltante."""
+        pts = (self.points_low, self.points_high, self.missing_points)
+        return min(pts), max(pts)
+
     def points(self, x: pd.Series) -> np.ndarray:
         values = x.to_numpy(dtype="float64", na_value=np.nan)
         pts = np.interp(
@@ -87,6 +95,23 @@ class ScoreWeights(BaseModel):
     score_version: str = Field(min_length=1)
     base: float = Field(ge=SCORE_MIN, le=SCORE_MAX)
     components: dict[str, Component] = Field(min_length=1)
+
+    @property
+    def theoretical_range(self) -> tuple[float, float]:
+        """Puntaje mínimo y máximo posibles antes del recorte."""
+        lows, highs = zip(*(c.bounds for c in self.components.values()), strict=True)
+        return self.base + sum(lows), self.base + sum(highs)
+
+    @model_validator(mode="after")
+    def range_within_scale(self) -> "ScoreWeights":
+        # Si el rango se sale de la escala, el recorte aplana los extremos:
+        # todos los mejores (o peores) clientes quedarían con el mismo puntaje.
+        low, high = self.theoretical_range
+        if low < SCORE_MIN or high > SCORE_MAX:
+            raise ValueError(
+                f"rango teórico [{low:g}, {high:g}] fuera de [{SCORE_MIN}, {SCORE_MAX}]"
+            )
+        return self
 
 
 def load_weights(path: Path = DEFAULT_WEIGHTS) -> ScoreWeights:
