@@ -14,6 +14,7 @@ from radia.backend.agent.llm import (
     Usage,
     _parse_amount,
     fill_template,
+    local_amounts,
     reasons_text,
 )
 from radia.config import Settings
@@ -300,3 +301,26 @@ def test_groq_ingreso_declarado_en_usd_se_parsea_localmente():
     u = llm.classify("gano 2500 dolares al mes", [])
     assert u.declared_monthly_income == 2500
     assert u.amount_in_usd is True
+
+
+@pytest.mark.parametrize(
+    ("text", "amount"),
+    [
+        ("quiero el préstamo a 12 meses", None),
+        ("quiero 2 tarjetas oro", None),
+        ("quiero 15% de descuento", None),
+        ("quiero 5000", None),
+        ("préstamo de 5 millones", 5_000_000),
+        ("$20.000", 20_000),
+        ("5000 pesos", 5000),
+        ("usd 300", 300),
+        ("un préstamo por 7000 a 24 meses", 7000),
+    ],
+)
+def test_numero_sin_contexto_de_dinero_no_es_monto(text, amount):
+    assert local_amounts(text)[0] == amount
+
+
+def test_ingreso_declarado_es_contexto_de_dinero():
+    amount, declared, _ = local_amounts("gano 8000")
+    assert amount == declared == 8000
