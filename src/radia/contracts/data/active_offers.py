@@ -9,6 +9,8 @@ modelo de cupo (C4). Consumidores: tools del orquestador y la web.
   decisiones reales de crédito.
 - Pasada `expires_at`, la oferta no se usa: el orquestador cae a un fallback
   seguro y nunca inventa una.
+- Sin puntaje (datos faltantes) nunca hay resolución automática.
+- La exposición no es columna: se deriva del producto con el YAML de la política.
 """
 
 import json
@@ -24,12 +26,16 @@ from radia.contracts.data import validate
 CONTRACT_VERSION = "0.1.0"
 
 
-def _is_reason_list(raw: str) -> bool:
+def _is_code_list(raw: str, *, allow_empty: bool) -> bool:
     try:
         parsed = json.loads(raw)
     except (TypeError, ValueError):
         return False
-    return isinstance(parsed, list) and all(isinstance(r, str) for r in parsed)
+    return (
+        isinstance(parsed, list)
+        and (allow_empty or len(parsed) > 0)
+        and all(isinstance(r, str) and r for r in parsed)
+    )
 
 
 class ActiveOffers(pa.DataFrameModel):
@@ -44,8 +50,13 @@ class ActiveOffers(pa.DataFrameModel):
     offered_limit_usd: Series[float] = pa.Field(gt=0, nullable=True)
     negotiation_min_usd: Series[float] = pa.Field(gt=0, nullable=True)
     negotiation_max_usd: Series[float] = pa.Field(gt=0, nullable=True)
-    # JSON con la lista de códigos de razón de la política, p. ej. ["band_high"].
+    # JSON con códigos de la política. Razones: al menos una. Alertas: pueden faltar.
     reasons_json: Series[str] = pa.Field(nullable=False)
+    alerts_json: Series[str] = pa.Field(nullable=False)
+    # Alternativa de menor exposición para ofrecer cuando no es elegible.
+    alternative_product_code: Series[str] = pa.Field(
+        isin=values(ProductCode), nullable=True
+    )
     policy_version: Series[str] = pa.Field(nullable=False)
     limit_model_version: Series[str] = pa.Field(nullable=True)
     synthetic_policy: Series[bool] = pa.Field(isin=[True])
@@ -58,8 +69,26 @@ class ActiveOffers(pa.DataFrameModel):
         unique = ("customer_id", "product_code")
 
     @pa.check("reasons_json", element_wise=True)
-    def reasons_are_json_list(cls, raw: str) -> bool:
-        return _is_reason_list(raw)
+    def reasons_are_non_empty_list(cls, raw: str) -> bool:
+        return _is_code_list(raw, allow_empty=False)
+
+    @pa.check("alerts_json", element_wise=True)
+    def alerts_are_list(cls, raw: str) -> bool:
+        return _is_code_list(raw, allow_empty=True)
+
+    @pa.dataframe_check
+    def score_and_band_null_together(cls, df: pd.DataFrame) -> pd.Series:
+        return df["score"].isna() == df["band"].isna()
+
+    @pa.dataframe_check
+    def no_automatic_without_score(cls, df: pd.DataFrame) -> pd.Series:
+        return ~(
+            df["score"].isna() & (df["attention_level"] == AttentionLevel.AUTOMATIC)
+        )
+
+    @pa.dataframe_check
+    def limit_has_model_version(cls, df: pd.DataFrame) -> pd.Series:
+        return df["offered_limit_usd"].isna() | df["limit_model_version"].notna()
 
     @pa.dataframe_check
     def expires_after_generated(cls, df: pd.DataFrame) -> pd.Series:
@@ -92,6 +121,7 @@ def make_active_offers(
     )
     n = len(rows)
     level = rng.choice(values(AttentionLevel), size=n)
+    level[rows["score"].isna().to_numpy()] = AttentionLevel.ANALYST
     limit = rng.lognormal(mean=7.5, sigma=0.8, size=n)
     limit[level == AttentionLevel.NOT_ELIGIBLE] = np.nan
     generated_at = pd.Timestamp("2026-06-17 06:00")
@@ -107,6 +137,8 @@ def make_active_offers(
             "negotiation_min_usd": limit * 0.8,
             "negotiation_max_usd": limit * 1.2,
             "reasons_json": json.dumps(["mock"]),
+            "alerts_json": "[]",
+            "alternative_product_code": None,
             "policy_version": "mock-policy-0.0.0",
             "limit_model_version": "mock-limit-0.0.0",
             "synthetic_policy": True,
