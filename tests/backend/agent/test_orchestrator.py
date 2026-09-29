@@ -568,3 +568,23 @@ def test_sesiones_vencidas_se_expulsan(tools, sink):
     assert set(orch.sessions) == {fresh.session_id}
     with pytest.raises(UnknownSession):
         orch.handle_message(old.session_id, "hola")
+
+
+def test_monto_convertido_se_confirma_y_guarda_igual(orch):
+    session = orch.start_session("C1", currency=Currency.COP, usd_per_unit=0.00025)
+    sid = session.session_id
+    reply = orch.handle_message(sid, "Quiero una tarjeta básica de 1.234.567 pesos")
+    # 1.234.567 × 0,00025 = 308,64175 USD: se trunca a centavos antes de mostrarlo.
+    assert "308.64 USD" in reply.reply
+    assert "308.64 USD" in reply.pending_confirmation.summary
+    done = orch.confirm(sid, reply.pending_confirmation.confirmation_id, True)
+    assert orch.tools.applications.get(done.application_reference).limit_usd == 308.64
+
+
+def test_monto_convertido_bajo_un_dolar_pide_aclaracion(orch, sink):
+    session = orch.start_session("C1", currency=Currency.COP, usd_per_unit=0.00025)
+    reply = orch.handle_message(
+        session.session_id, "Quiero una tarjeta básica de 2.000 pesos"
+    )
+    assert reply.pending_confirmation is None
+    assert last_trace(sink).outcome == Outcome.CLARIFICATION
