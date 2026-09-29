@@ -835,7 +835,8 @@ class GroqLanguageModel:
         amount, declared, in_usd = local_amounts(message)
         return _understanding_from(raw).model_copy(
             update={
-                "amount": amount,
+                # El ingreso declarado no es un monto pedido (igual que el falso).
+                "amount": None if declared is not None else amount,
                 "declared_monthly_income": declared,
                 "amount_in_usd": in_usd,
             }
