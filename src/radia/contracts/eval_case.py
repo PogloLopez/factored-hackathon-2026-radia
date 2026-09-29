@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from radia.contracts.common import AttentionLevel
 
-CONTRACT_VERSION = "0.1.0"
+CONTRACT_VERSION = "0.2.0"
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -66,6 +66,8 @@ class Behavior(StrEnum):
     REDIRECT_CHANNEL = "redirect_channel"
     REQUEST_CONFIRMATION = "request_confirmation"
     SAFE_FALLBACK = "safe_fallback"
+    # Negativa explícita y segura: no ejecuta lo pedido y lo dice sin filtrar datos.
+    REFUSE = "refuse"
 
 
 class InjectedFailure(StrEnum):
