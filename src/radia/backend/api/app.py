@@ -220,8 +220,11 @@ def create_app(
     def chat_message(
         body: ChatMessageRequest, principal: Customer, state: State
     ) -> ChatResponse:
+        orch = state.orchestrator
+        # El lock global cubre solo abrir la sesión o chequear su dueño. El turno
+        # (y el LLM) va fuera: el orquestador lo serializa con el lock de la
+        # sesión, así clientes distintos conversan en paralelo.
         with state.lock:
-            orch = state.orchestrator
             if body.session_id is None:
                 currency, rate = session_currency(principal.customer_id)
                 session_id = orch.start_session(
@@ -230,12 +233,12 @@ def create_app(
             else:
                 session_id = body.session_id
                 _owned_session(state, session_id, principal.customer_id)
-            try:
-                reply = orch.handle_message(session_id, body.message)
-            except UnknownSession:
-                raise HTTPException(
-                    status.HTTP_404_NOT_FOUND, "sesión no encontrada"
-                ) from None
+        try:
+            reply = orch.handle_message(session_id, body.message)
+        except UnknownSession:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "sesión no encontrada"
+            ) from None
         return _chat_response(reply)
 
     @app.post("/chat/confirm")
@@ -244,14 +247,14 @@ def create_app(
     ) -> ChatResponse:
         with state.lock:
             _owned_session(state, body.session_id, principal.customer_id)
-            try:
-                reply = state.orchestrator.confirm(
-                    body.session_id, body.confirmation_id, body.accept
-                )
-            except UnknownSession:
-                raise HTTPException(
-                    status.HTTP_404_NOT_FOUND, "sesión no encontrada"
-                ) from None
+        try:
+            reply = state.orchestrator.confirm(
+                body.session_id, body.confirmation_id, body.accept
+            )
+        except UnknownSession:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "sesión no encontrada"
+            ) from None
         return _chat_response(reply)
 
     @app.get("/analyst/cases")

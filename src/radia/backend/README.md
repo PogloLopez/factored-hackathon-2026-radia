@@ -167,6 +167,7 @@ Reglas:
 
 - Cabecera `Authorization: Bearer <token>`. Sin token válido, 401. Rol ajeno, 403.
 - La identidad sale del token. El cuerpo nunca trae `customer_id`.
+- El lock global de la API solo cubre el dueño de la sesión y su alta. El turno lo serializa el lock de la sesión: clientes distintos conversan en paralelo.
 - La sesión de chat es de quien la abrió. Otro cliente sobre ella recibe 403.
 - Monto del asesor fuera del rango de negociación del caso: 422. Caso ya decidido: 409.
 - Ofertas: `demo_offers()` siempre, más `data_dir/gold/active_offers.parquet` si existe. Un id repetido queda con el de Gold. Solo los clientes demo hacen login; el login con clientes de Gold queda para después de la descarga.
