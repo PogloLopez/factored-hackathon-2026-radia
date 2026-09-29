@@ -503,6 +503,28 @@ EN_MARKERS = _rx(
 AMOUNT = _rx(r"(\d[\d.,/-]*\d|\d)\s*(millones|millon|milhoes|milhao|million|mil|k)?\b")
 # El cliente habla en moneda local (MXN, COP, ARS) salvo que diga USD.
 USD = _rx(r"\b(usd|us\$|u\$s|dolar|dolares|dollars?)(?!\w)")
+# Contexto de dinero alrededor de un número. Sin contexto, no es un monto.
+MONEY_BEFORE = _rx(
+    r"(?:\$|us\$|u\$s)\s*$"
+    r"|\b(?:usd|mxn|cop|ars|pesos?|dolares|dollars?)\s*$"
+    r"|\b(?:monto|cupo|valor|limite|limit|amount|por|for)\s*(?:de|of)?\s*:?\s*$"
+    # "préstamo de 2.000.000", "tarjeta básica de 5.000".
+    r"|\b(?:prestamo|emprestimo|loan|credito|tarjeta|cartao|card|hipoteca"
+    r"|mortgage|financiamento)\b(?:\s+\w+){0,2}\s+(?:de|of|for)\s*$"
+    # Verbo o sustantivo de ingreso: "gano 8000", "mi sueldo es 3.000".
+    r"|\b(?:gano|ganho|earn|make|ingresos?|sueldo|salario|renda|income|salary)\b"
+    r"[^\d]{0,15}$"
+)
+# Se aplican con `match(text, pos)`: ahí `^` no ancla en `pos`, por eso no va.
+MONEY_AFTER = _rx(
+    r"\s*(?:de\s+)?(?:pesos?|dolares|dolar|dollars?|usd|us\$|mxn|cop|ars"
+    r"|reais|reales)\b"
+)
+# Unidades de tiempo o cantidad: "12 meses", "2 tarjetas", "15%". No es monto.
+NOT_MONEY_AFTER = _rx(
+    r"\s*(?:%|(?:meses|mes|anos|ano|cuotas?|plazos?|dias?|tarjetas|cartoes"
+    r"|veces|vezes|months?|years?|days?|installments|times)\b)"
+)
 MULTIPLIER = {
     "millones": 1e6,
     "millon": 1e6,
@@ -550,12 +572,25 @@ def local_amounts(message: str) -> tuple[float | None, float | None, bool]:
 def _parse_amount(text: str) -> float | None:
     """Monto del mensaje, o `None` si no se puede interpretar con seguridad.
 
-    Nunca lanza. Más de un número en el mensaje es ambiguo: `None`.
+    Nunca lanza. Un número seguido de tiempo o cantidad ("12 meses", "2
+    tarjetas") no cuenta. De los demás debe quedar uno solo (más es ambiguo) y
+    con contexto de dinero: símbolo, moneda, multiplicador ("5 millones"),
+    palabra de monto o verbo de ingreso.
     """
-    matches = AMOUNT.findall(text)
-    if len(matches) != 1:
+    candidates = [
+        m for m in AMOUNT.finditer(text) if not NOT_MONEY_AFTER.match(text, m.end())
+    ]
+    if len(candidates) != 1:
         return None
-    raw, unit = matches[0]
+    match = candidates[0]
+    raw, unit = match.group(1), match.group(2)
+    has_context = (
+        unit is not None
+        or MONEY_BEFORE.search(text[: match.start()]) is not None
+        or MONEY_AFTER.match(text, match.end()) is not None
+    )
+    if not has_context:
+        return None
     value = _number_value(raw)
     if value is None:
         return None
