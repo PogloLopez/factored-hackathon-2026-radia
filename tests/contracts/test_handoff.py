@@ -96,9 +96,16 @@ def test_decision_of_other_customer_fails():
         HandoffCase(**case_data(policy_decision=decision(customer_id="OTRO")))
 
 
-def test_empty_verified_facts_fails():
+def test_sin_hechos_ni_preguntas_falla():
     with pytest.raises(ValidationError):
-        HandoffCase(**case_data(verified_facts=[]))
+        HandoffCase(**case_data(verified_facts=[], open_questions=[]))
+
+
+def test_fallback_sin_hechos_con_preguntas_pasa():
+    c = HandoffCase(
+        **case_data(verified_facts=[], open_questions=["¿Sigue caída la política?"])
+    )
+    assert c.verified_facts == []
 
 
 def test_naive_created_at_fails():

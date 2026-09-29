@@ -9,6 +9,8 @@ Productor: orquestador. Consumidores: bandeja del analista y consola del asesor.
 - Sin datos de contacto ni documento: el humano los consulta en el core.
 - Un caso puede traer una decisión automática: si una tool falla al
   ejecutarla, el fallback seguro es escalar con esa decisión adjunta.
+- En un fallback puede no haber hechos verificados. Entonces el caso exige
+  preguntas abiertas, para que el humano sepa qué falta.
 """
 
 from enum import StrEnum
@@ -49,7 +51,7 @@ class HandoffCase(BaseModel):
     customer_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
     request_summary: str = Field(min_length=1)
-    verified_facts: list[str] = Field(min_length=1)
+    verified_facts: list[str] = Field(default_factory=list)
     # Puntos por componente del puntaje interno (C3).
     score_breakdown: dict[str, float] = Field(default_factory=dict)
     policy_decision: PolicyDecision
@@ -61,4 +63,6 @@ class HandoffCase(BaseModel):
     def check_decision_matches(self) -> Self:
         if self.policy_decision.customer_id != self.customer_id:
             raise ValueError("policy_decision no corresponde al cliente del caso")
+        if not self.verified_facts and not self.open_questions:
+            raise ValueError("sin hechos verificados, el caso exige preguntas abiertas")
         return self
