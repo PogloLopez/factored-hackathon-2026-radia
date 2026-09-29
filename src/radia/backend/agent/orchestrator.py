@@ -39,7 +39,12 @@ from radia.backend.agent.llm import (
     product_name,
     reasons_text,
 )
-from radia.backend.agent.session import PendingConfirmation, Session, SessionState
+from radia.backend.agent.session import (
+    Currency,
+    PendingConfirmation,
+    Session,
+    SessionState,
+)
 from radia.backend.agent.tools import (
     Application,
     Offer,
@@ -154,14 +159,25 @@ class Orchestrator:
     # --- API pública ---------------------------------------------------------
 
     def start_session(
-        self, customer_id: str, *, eval_case_id: str | None = None
+        self,
+        customer_id: str,
+        *,
+        eval_case_id: str | None = None,
+        currency: Currency | None = None,
+        usd_per_unit: float | None = None,
     ) -> Session:
-        """Abre sesión para el cliente autenticado (el id sale del login)."""
+        """Abre sesión para el cliente autenticado (el id sale del login).
+
+        `currency` y `usd_per_unit` (USD por unidad local) vienen del lado
+        servidor. Sin tasa, un monto en moneda local no se usa para enrutar.
+        """
         session = Session(
             session_id=f"SES-{uuid.uuid4().hex[:10].upper()}",
             customer_id=customer_id,
             expires_at=self.clock() + self.session_ttl,
             eval_case_id=eval_case_id,
+            currency=currency,
+            usd_per_unit=usd_per_unit,
         )
         self.sessions[session.session_id] = session
         return session
@@ -284,13 +300,20 @@ class Orchestrator:
         if level == AttentionLevel.NOT_ELIGIBLE:
             return self._explain_not_eligible(session, turn, offer)
 
-        amount = u.amount_usd
+        amount, shown = _amount_usd(session, u), _amount_text(session, u)
         questions = []
-        if amount is not None:
-            questions.append(
-                f"El cliente pide {format_usd(amount)}; la oferta sugiere "
-                f"{format_usd(offer.offered_limit_usd or 0)}."
-            )
+        if shown is not None:
+            suggested = format_usd(offer.offered_limit_usd or 0)
+            if amount is None:
+                questions.append(
+                    f"El cliente pide {shown}; sin tasa a USD, el monto no se usó "
+                    f"para enrutar. La oferta sugiere {suggested}."
+                )
+            else:
+                questions.append(
+                    f"El cliente pide {shown} ({format_usd(amount)}); la oferta "
+                    f"sugiere {suggested}."
+                )
         if level == AttentionLevel.AUTOMATIC:
             limit = offer.offered_limit_usd or 0
             if amount is not None and amount > limit:
@@ -306,7 +329,7 @@ class Orchestrator:
                     level=AttentionLevel.ADVISOR if within else AttentionLevel.ANALYST,
                     trigger="requested_amount_above_offer",
                     product=product,
-                    amount=amount,
+                    amount=shown,
                     offer=offer,
                     open_questions=questions,
                 )
@@ -324,7 +347,7 @@ class Orchestrator:
             level=level,
             trigger=f"policy_{level.value}",
             product=product,
-            amount=amount,
+            amount=shown,
             offer=offer,
             open_questions=questions,
         )
@@ -451,7 +474,7 @@ class Orchestrator:
             else AttentionLevel.ADVISOR,
             trigger=trigger,
             product=offer.product_code if offer else product,
-            amount=u.amount_usd,
+            amount=_amount_text(session, u),
             offer=offer,
             open_questions=questions,
             high_priority=dispute,
@@ -469,8 +492,8 @@ class Orchestrator:
                 # Igual que la política: el ingreso declarado no rescata un no elegible.
                 return self._explain_not_eligible(session, turn, offer)
         declared = (
-            format_usd(u.declared_monthly_income_usd)
-            if u.declared_monthly_income_usd
+            _money(session, u.declared_monthly_income, u.amount_in_usd)
+            if u.declared_monthly_income
             else "sin monto"
         )
         questions = [
@@ -490,7 +513,7 @@ class Orchestrator:
             else AttentionLevel.ANALYST,
             trigger="declared_income_unverified",
             product=product,
-            amount=u.amount_usd,
+            amount=_amount_text(session, u),
             offer=offer,
             open_questions=questions,
             template="income_noted",
@@ -608,7 +631,7 @@ class Orchestrator:
         trigger: str,
         product: ProductCode | None,
         offer: Offer | None,
-        amount: float | None = None,
+        amount: str | None = None,
         open_questions: Sequence[str] = (),
         actions: Sequence[str] = (),
         high_priority: bool = False,
@@ -616,7 +639,7 @@ class Orchestrator:
     ) -> str:
         summary = f"El cliente solicita {_product_es(product)}"
         if amount is not None:
-            summary += f" por {format_usd(amount)}"
+            summary += f" por {amount}"
         questions = list(open_questions)
         if offer is None and not questions:
             questions.append("No hay oferta vigente verificada.")
@@ -743,6 +766,28 @@ class Orchestrator:
             application_reference=turn.application_reference,
             trace_id=trace.trace_id,
         )
+
+
+def _money(session: Session, amount: float, in_usd: bool) -> str:
+    """Monto con su moneda original, para el analista."""
+    currency = "USD" if in_usd else (session.currency or "en moneda local")
+    digits = ",.0f" if float(amount).is_integer() else ",.2f"
+    return f"{amount:{digits}} {currency}"
+
+
+def _amount_text(session: Session, u: Understanding) -> str | None:
+    return _money(session, u.amount, u.amount_in_usd) if u.amount else None
+
+
+def _amount_usd(session: Session, u: Understanding) -> float | None:
+    """Monto pedido en USD para compararlo con cupos. `None` si no hay tasa."""
+    if u.amount is None:
+        return None
+    if u.amount_in_usd or session.currency == Currency.USD:
+        return u.amount
+    if session.usd_per_unit is None:
+        return None
+    return u.amount * session.usd_per_unit
 
 
 def _verified_facts(offer: Offer) -> list[str]:

@@ -3,6 +3,8 @@
 - El `customer_id` sale del login (token de sesión), nunca del texto del chat.
 - Estados: idle → awaiting_confirmation → done / handoff. `handoff` es
   terminal: el caso ya está con una persona.
+- Moneda y tasa a USD las inyecta quien crea la sesión: los montos del chat
+  vienen en moneda local y se convierten antes de compararlos con cupos en USD.
 - La confirmación pendiente vive en la sesión. La tool de solicitudes la exige
   aceptada, así que sin confirmación explícita no hay acción.
 """
@@ -18,6 +20,15 @@ from radia.contracts.common import ProductCode
 from radia.contracts.eval_case import Language
 
 MAX_HISTORY = 20
+
+
+class Currency(StrEnum):
+    """Moneda local del cliente. Los cupos de C6 están en USD."""
+
+    MXN = "MXN"
+    COP = "COP"
+    ARS = "ARS"
+    USD = "USD"
 
 
 class SessionState(StrEnum):
@@ -80,6 +91,10 @@ class Session(BaseModel):
     handoff_case_id: str | None = None
     turn_index: int = Field(default=0, ge=0)
     eval_case_id: str | None = None
+    # Las inyecta quien crea la sesión (login y servicio de tasas), nunca el chat.
+    currency: Currency | None = None
+    # USD por unidad de moneda local. Sin tasa, un monto local no enruta.
+    usd_per_unit: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
     def is_active(self, now: datetime) -> bool:
         return now < self.expires_at
