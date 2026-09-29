@@ -3,10 +3,14 @@
 from pathlib import Path
 from typing import Annotated
 
+import duckdb
 import typer
 
 from radia.config import CREDIT_TABLES, get_settings
 from radia.etl import s3
+from radia.etl.bronze import build_bronze
+from radia.etl.silver import build_silver
+from radia.etl.tables import TableSpec, select_tables
 
 app = typer.Typer(no_args_is_help=True, help="Pipeline de datos de Radia.")
 
@@ -75,3 +79,41 @@ def download(
         settings.s3_max_concurrency,
     )
     typer.echo(f"Descargados: {len(done)}")
+
+
+def _specs(tables: str | None) -> list[TableSpec]:
+    try:
+        return select_tables(tables)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+TablesOption = Annotated[
+    str | None,
+    typer.Option(help="Tablas separadas por coma. Por defecto, todas las de Silver."),
+]
+
+
+@app.command()
+def bronze(tables: TablesOption = None) -> None:
+    """Reconstruye Bronze (parquet sin tipar) desde data/local/raw/."""
+    settings = get_settings()
+    con = duckdb.connect()
+    for spec in _specs(tables):
+        path = build_bronze(spec, settings, con)
+        typer.echo(f"{spec.name:24} {path}")
+
+
+@app.command()
+def silver(tables: TablesOption = None) -> None:
+    """Construye Silver y el reporte de calidad desde Bronze."""
+    settings = get_settings()
+    con = duckdb.connect()
+    for spec in _specs(tables):
+        r = build_silver(spec, settings, con)
+        typer.echo(
+            f"{r.table:24} in={r.rows_in:>9} out={r.rows_out:>9} "
+            f"dup={r.exact_duplicates_removed} viejas={r.stale_versions_removed} "
+            f"cast={sum(r.cast_failures.values())} huerfanos={r.orphans}"
+        )
+    typer.echo(f"Reportes: {settings.data_dir / 'quality'}")
