@@ -34,6 +34,7 @@ from radia.backend.agent.llm import (
     Role,
     Understanding,
     UnsupportedTopic,
+    fill_template,
     format_usd,
     join_items,
     product_name,
@@ -190,6 +191,17 @@ class Orchestrator:
         if not session.is_active(self.clock()):
             turn = _Turn(intent="session_expired", outcome=Outcome.REFUSED)
             text = self._say(session, "session_expired")
+        elif session.state == SessionState.HANDOFF:
+            # El caso ya está con una persona: respuesta fija, sin LLM ni gasto.
+            # El idioma de la sesión no cambia.
+            turn = _Turn(intent="in_handoff")
+            text = fill_template(
+                "in_handoff",
+                {
+                    "language": session.language.value,
+                    "case_id": session.handoff_case_id,
+                },
+            )
         else:
             understanding = self.llm.classify(message, session.history)
             session.language = understanding.language
@@ -213,8 +225,6 @@ class Orchestrator:
     # --- Ruteo ---------------------------------------------------------------
 
     def _route(self, session: Session, u: Understanding, turn: _Turn) -> str:
-        if session.state == SessionState.HANDOFF:
-            return self._say(session, "in_handoff", case_id=session.handoff_case_id)
         if session.state == SessionState.AWAITING_CONFIRMATION:
             # Un mensaje nuevo anula la confirmación pendiente.
             session.pending = None

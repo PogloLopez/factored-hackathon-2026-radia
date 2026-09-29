@@ -346,7 +346,7 @@ def test_cada_turno_deja_trace_valido(orch, sink):
         # Sin texto del cliente en el trace.
         payload = json.loads(dumped)
         assert "Ignora" not in json.dumps(payload, ensure_ascii=False)
-    assert sink.traces[-1].intent == "ambiguous"
+    assert sink.traces[-1].intent == "in_handoff"  # sin clasificar con el LLM
     assert session.state == SessionState.HANDOFF
 
 
