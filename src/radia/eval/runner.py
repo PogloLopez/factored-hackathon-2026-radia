@@ -39,6 +39,7 @@ from radia.backend.agent.tools import (
 from radia.backend.agent.tracing import InMemoryTraceSink
 from radia.contracts.common import Country
 from radia.contracts.eval_case import EvalCase, InjectedFailure
+from radia.contracts.handoff import HandoffCase
 from radia.contracts.trace import Outcome, TurnTrace
 from radia.eval.demo_customers import DEMO_PROFILES, demo_offers
 from radia.eval.evidence import (
@@ -142,6 +143,20 @@ class _AuditedApplicationStore(InMemoryApplicationStore):
         return stored
 
 
+class _AuditedCaseStore(InMemoryCaseStore):
+    """Anota el turno en que cada expediente C9 quedó guardado."""
+
+    def __init__(self, turn: Callable[[], int]) -> None:
+        super().__init__()
+        self.turn = turn
+        self.saved_turn: dict[str, int] = {}
+
+    def save(self, case: HandoffCase) -> HandoffCase:
+        stored = super().save(case)
+        self.saved_turn.setdefault(stored.case_id, self.turn())
+        return stored
+
+
 # --- Runner ------------------------------------------------------------------
 
 
@@ -152,7 +167,7 @@ class _Harness:
     clock: _Clock
     reads: list[DataRead]
     applications: InMemoryApplicationStore
-    cases: InMemoryCaseStore
+    cases: _AuditedCaseStore
 
 
 class EvalRunner:
@@ -259,7 +274,7 @@ class EvalRunner:
             applications: InMemoryApplicationStore = _TimeoutApplicationStore()
         else:
             applications = _AuditedApplicationStore(turn)
-        cases = InMemoryCaseStore()
+        cases = _AuditedCaseStore(turn)
         tools = ToolBox(
             _AuditedOfferRepository(inner, reads, turn),
             applications,
@@ -329,22 +344,36 @@ def _actions(store: InMemoryApplicationStore) -> list[ActionRecord]:
 
 
 def _handoffs(
-    traces: Sequence[TurnTrace], store: InMemoryCaseStore
+    traces: Sequence[TurnTrace], store: _AuditedCaseStore
 ) -> list[HandoffRecord]:
-    records = []
+    """Expedientes leídos del almacén de casos, no de lo que dice el trace.
+
+    Un trace que cita un expediente que no está en el almacén deja un registro
+    con `found=False`: las métricas lo tratan como acción no verificada.
+    """
+    records = [
+        HandoffRecord(
+            turn_index=store.saved_turn.get(case.case_id, 0),
+            case_id=case.case_id,
+            handoff_type=case.handoff_type,
+            customer_id=case.customer_id,
+            found=True,
+            n_verified_facts=len(case.verified_facts),
+            n_open_questions=len(case.open_questions),
+            has_policy_decision=case.policy_decision is not None,
+        )
+        for case in store.cases.values()
+    ]
     for trace in traces:
-        if trace.handoff_case_id is None or trace.handoff_type is None:
+        cited = trace.handoff_case_id
+        if cited is None or cited in store.cases or trace.handoff_type is None:
             continue
-        case = store.get(trace.handoff_case_id)
         records.append(
             HandoffRecord(
                 turn_index=trace.turn_index,
-                case_id=trace.handoff_case_id,
+                case_id=cited,
                 handoff_type=trace.handoff_type,
-                found=case is not None,
-                n_verified_facts=len(case.verified_facts) if case else 0,
-                n_open_questions=len(case.open_questions) if case else 0,
-                has_policy_decision=bool(case and case.policy_decision),
+                found=False,
             )
         )
     return records

@@ -7,7 +7,8 @@
   - `data_reads`: qué cliente se leyó en la fuente de ofertas y en qué turno.
   - `actions`: solicitudes que quedaron registradas en el almacén.
   - `confirmed_turns`: turnos en que el cliente apretó "Sí".
-  - `handoffs`: expedientes que quedaron en la bandeja, con su contexto.
+  - `handoffs`: expedientes C9 que quedaron en el almacén de casos, con su
+    contexto, más los que un trace citó y no están (`found=False`).
   - `offers`: verdad de terreno de las ofertas del cliente de la sesión.
 - Sin texto del cliente ni datos personales, igual que C11.
 """
@@ -55,14 +56,17 @@ class ActionRecord(BaseModel):
 
 
 class HandoffRecord(BaseModel):
-    """Expediente de handoff tal como quedó en la bandeja."""
+    """Expediente de handoff tal como quedó en el almacén de casos."""
 
     model_config = _FROZEN
 
+    # Turno en que se guardó (o en que un trace lo citó, si no está).
     turn_index: int = Field(ge=0)
     case_id: str = Field(min_length=1)
     handoff_type: HandoffType
-    # El expediente se pudo leer de la bandeja.
+    # Cliente del expediente guardado. `None` si no está en el almacén.
+    customer_id: str | None = None
+    # El expediente existe en el almacén de casos del orquestador.
     found: bool
     n_verified_facts: int = Field(default=0, ge=0)
     n_open_questions: int = Field(default=0, ge=0)
