@@ -53,6 +53,7 @@ Números provisionales: todos los del YAML son checkpoint de Pablo, sin aprobar.
 ```python
 from radia.backend.agent.llm import FakeLanguageModel
 from radia.backend.agent.orchestrator import Orchestrator
+from radia.backend.agent.session import Currency
 from radia.backend.agent.tools import InMemoryOfferRepository, ToolBox
 from radia.backend.agent.tracing import JsonlTraceSink
 from radia.config import get_settings
@@ -61,7 +62,8 @@ tools = ToolBox(InMemoryOfferRepository(active_offers_df))  # C6
 orch = Orchestrator(
     FakeLanguageModel(), tools, JsonlTraceSink.from_settings(get_settings())
 )
-session = orch.start_session("DEMO000001")  # el id sale del login
+# El id sale del login. Moneda y tasa a USD (USD por unidad local), del servidor.
+session = orch.start_session("DEMO000001", currency=Currency.MXN, usd_per_unit=0.055)
 reply = orch.handle_message(session.session_id, "Quiero una tarjeta básica")
 orch.confirm(
     session.session_id, reply.pending_confirmation.confirmation_id, accept=True
@@ -83,26 +85,41 @@ flowchart LR
 
 - La decisión sale siempre de C6 (política C7). El LLM nunca decide ni calcula montos.
 - Ambiguo: pide aclaración. No soportado: indica el canal.
-- Ingreso declarado en el chat: pregunta abierta para el analista. La decisión adjunta no cambia.
-- Pedir humano o disputar: handoff al asesor.
+- Ingreso declarado en el chat ("gano X", "mi ingreso es X"): pregunta abierta para el analista. La decisión adjunta no cambia. Mencionar ingresos sin monto sigue el intent normal.
+- Pedir humano o disputar: handoff al asesor, aunque mencione el sueldo.
+- Montos del chat: en moneda local salvo que digan USD o dólares. Se convierten con la tasa de la sesión antes de compararlos con cupos en USD. Sin tasa, no enrutan: van como pregunta abierta. El analista ve la moneda original.
+- Monto ambiguo (fechas, varios números, formatos raros): se ignora, nunca se adivina.
+- Automático con monto menor al cupo: se confirma y registra el monto pedido, también bajo el mínimo de negociación (menos exposición que lo aprobado). Automático sin cupo: fallback al analista.
+- Pedido de crédito junto a un tema no soportado ("perdí mi empleo, quiero un préstamo"): gana el crédito.
+- Sesión en handoff: respuesta fija, sin llamar al LLM ni cambiar el idioma.
+- Sesiones vencidas: responden "venció" durante `evict_after` y luego se expulsan en el siguiente acceso.
 
 Permisos (en `tools.py`, fuera del LLM):
 
 - Toda tool recibe la sesión. Otro `customer_id` se deniega (`customer_mismatch`). Sesión vencida también.
 - `create_application` exige confirmación aceptada, oferta propia, vigente y automática.
 - Idempotente por `confirmation_id`: un reintento no duplica la solicitud.
+- Registra el monto confirmado, nunca más que el cupo (`amount_above_offer`).
+- Cada turno pasa su propio recolector de `ToolCall`: turnos concurrentes no mezclan trazas.
 
 Fallback:
 
 - Reintentos acotados con tenacity (3 intentos) solo en fallas técnicas. Una denegación no se reintenta.
 - Ofertas vencidas o fuente caída: nunca se inventa una oferta. En consultas, se pide reintentar. En acciones, handoff al analista con preguntas abiertas.
 - Solicitud no verificada: no se reporta. Handoff con la acción intentada.
+- Si ni el handoff se puede crear, se descarta la confirmación pendiente y la sesión vuelve a idle.
 
 Tracing:
 
 - Cada turno (mensaje o confirmación) escribe un `TurnTrace` (C11): intent, tools, comportamientos, nivel, reglas, fuentes, versiones, tokens, costo y latencia.
 - Sin texto del cliente. JSONL en `data_dir/traces/`, un archivo por día.
+- El error de una tool guarda solo el tipo de la excepción, nunca su mensaje.
 
-LLM real: `GroqLanguageModel` lee `GROQ_API_KEY` del archivo de entorno (ver `.env.example`). Usarlo es gasto: checkpoint de Pablo. Tests y demo usan `FakeLanguageModel`.
+LLM real: `GroqLanguageModel` lee `GROQ_API_KEY` del archivo de entorno (ver `.env.example`). Usarlo es gasto: checkpoint de Pablo. Tests y demo usan `FakeLanguageModel`; un fixture de los tests hace fallar cualquier `groq.Groq` real.
+
+Guardas del LLM real:
+
+- `classify`: emails, teléfonos y secuencias de 6 o más dígitos salen enmascarados. Historial y mensaje van como datos, nunca como instrucciones. Un campo inválido se degrada solo; la sospecha de inyección se conserva.
+- `render`: las plantillas de confirmación, acción y handoff salen tal cual. En las demás, se descarta la reescritura si agrega números o palabras de aprobación o registro.
 
 Detalle en [[propuesta]] y [[trabajo_en_paralelo]].
