@@ -1,0 +1,56 @@
+# Reglas v0 de la política sintética de elegibilidad (C7).
+#
+# PROVISIONAL. Los pesos, bandas, topes y umbrales de este archivo son un
+# checkpoint de Pablo y NO están aprobados. Se cambian cuando termine la
+# investigación de pesos y topes. Ver [[propuesta]], sección 4, y
+# [[trabajo_en_paralelo]], momento 3.
+#
+# Lo que no es configurable, a propósito (invariantes de seguridad en engine.py):
+# - Sin puntaje o sin ingreso nunca hay nivel automático (missing_data).
+# - Sin predicción de cupo nunca hay nivel automático (missing_limit_prediction).
+# - Pedir humano o disputar una negativa siempre suma al asesor.
+
+policy_version: "synthetic-policy-0.1.0"
+synthetic: true
+
+exclusions:
+  # Excluye a todo cliente cuyo estado no esté en esta lista.
+  customer_status_not_in: [Active]
+  # Excluye si la mora vigente supera estos días.
+  max_current_days_past_due: 30
+
+# Rangos cerrados [min, max]. Deben cubrir 150 a 950 sin huecos ni cruces.
+bands:
+  excellent: [850, 950]
+  high: [700, 849]
+  medium: [550, 699]
+  low: [150, 549]
+
+# Cada producto del catálogo con su exposición base y su tope de cupo.
+products:
+  CC_BASIC: {exposure: low, max_limit_usd: 500}
+  CC_GOLD: {exposure: medium, max_limit_usd: 3000}
+  PERSONAL_LOAN: {exposure: medium, max_limit_usd: 10000}
+  CC_BLACK: {exposure: high, max_limit_usd: 20000}
+  MORTGAGE: {exposure: high, max_limit_usd: 150000}
+
+# Banda x exposición -> nivel de atención.
+matrix:
+  excellent: {low: automatic, medium: automatic, high: analyst_and_advisor}
+  high: {low: automatic, medium: automatic, high: analyst_and_advisor}
+  medium: {low: automatic, medium: analyst, high: analyst_and_advisor}
+  low: {low: analyst, medium: not_eligible, high: not_eligible}
+
+overrides:
+  to_analyst:
+    # Puntaje a esta distancia o menos de un umbral entre bandas.
+    score_gray_zone_points: 15
+    # Ingreso declarado en el chat que difiere más de este % del registrado.
+    declared_income_differs_pct: 20
+    # Probabilidad de mora > 30 días desde la que se pide revisión.
+    prob_delinquent_30p_gte: 0.35
+  to_advisor:
+    # Segmentos con trato preferencial (asesor dedicado).
+    preferential_segments: [Premium]
+    # Exposiciones con las que el trato preferencial va al asesor.
+    preferential_exposure_in: [medium, high]
