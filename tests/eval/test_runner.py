@@ -62,6 +62,10 @@ def test_analista_escala_con_expediente(runs, cases):
     run = runs["ANL-001"]
     [handoff] = run.handoffs
     assert handoff.found and handoff.n_verified_facts > 0
+    # El expediente sale del almacén de casos, con su turno y su cliente.
+    [handoff_trace] = [t for t in run.traces if t.outcome == Outcome.HANDOFF]
+    assert handoff.turn_index == handoff_trace.turn_index
+    assert handoff.customer_id == run.customer_id
     assert judge(run, cases["ANL-001"]).passed
 
 
