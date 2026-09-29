@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Radia · Bandeja del analista</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <script src="/web/common.js" defer></script>
+    <script src="/web/analyst.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Radia · Bandeja del analista</strong>
+      <nav aria-label="Principal">
+        <button type="button" id="refresh" class="secondary">Actualizar</button>
+        <button type="button" id="logout" class="secondary">Cerrar sesión</button>
+      </nav>
+    </header>
+    <main>
+      <h1>Casos pendientes</h1>
+      <p class="notice" role="note">
+        <strong>Política sintética:</strong> la decisión adjunta no es una
+        decisión real de crédito.
+      </p>
+      <div id="result" class="success" role="status" hidden></div>
+      <div id="list-error" class="error" role="alert" hidden></div>
+      <p id="list-status" class="muted" role="status">Cargando casos…</p>
+      <div id="cases"></div>
+    </main>
+  </body>
+</html>

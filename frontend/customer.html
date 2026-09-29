@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Radia · Mi cuenta</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <script src="/web/common.js" defer></script>
+    <script src="/web/customer.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Radia · Banco sintético</strong>
+      <nav aria-label="Principal">
+        <a href="/web/customer.html" aria-current="page">Mi cuenta</a>
+        <a href="/web/chat.html">Chat</a>
+        <button type="button" id="logout" class="secondary">Cerrar sesión</button>
+      </nav>
+    </header>
+    <main>
+      <h1>Mi cuenta</h1>
+      <p class="notice" role="note">
+        <strong>Política sintética:</strong> no es una decisión real de crédito.
+        Las ofertas son de demostración.
+      </p>
+
+      <section aria-labelledby="summary-title">
+        <h2 id="summary-title">Resumen</h2>
+        <dl class="facts" id="summary"></dl>
+      </section>
+
+      <section aria-labelledby="offers-title">
+        <h2 id="offers-title">Ofertas vigentes</h2>
+        <div id="offers-error" class="error" role="alert" hidden></div>
+        <p id="offers-status" class="muted" role="status">Cargando ofertas…</p>
+        <div id="offers" class="grid"></div>
+        <p><a href="/web/chat.html">Abrir el chat para pedir un producto o hacer preguntas</a></p>
+      </section>
+    </main>
+  </body>
+</html>

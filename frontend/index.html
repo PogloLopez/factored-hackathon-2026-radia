@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Radia · Iniciar sesión</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <script src="/web/common.js" defer></script>
+    <script src="/web/login.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <strong>Radia · Banco sintético</strong>
+    </header>
+    <main>
+      <h1>Iniciar sesión</h1>
+      <p class="notice">
+        Demostración con datos y política sintéticos. Identidad de prueba: no es
+        un banco real.
+      </p>
+      <form id="login-form" novalidate>
+        <label for="username">Usuario</label>
+        <input
+          id="username"
+          name="username"
+          autocomplete="username"
+          required
+          aria-describedby="username-hint"
+        />
+        <p id="username-hint" class="hint">
+          Cliente: DEMO000001 a DEMO000018. Analista: analyst.demo. Asesor:
+          advisor.demo.
+        </p>
+
+        <label for="password">Clave</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          aria-describedby="password-hint"
+        />
+        <p id="password-hint" class="hint">Clave de demo: radia-demo.</p>
+
+        <div id="login-error" class="error" role="alert" hidden></div>
+        <div class="actions">
+          <button type="submit" id="login-submit">Entrar</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
