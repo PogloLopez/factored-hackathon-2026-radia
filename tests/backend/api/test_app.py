@@ -296,6 +296,20 @@ def test_advisor_cannot_write_on_analyst_case(client, headers_for, advisor):
     assert response.status_code == 404
 
 
+def test_advisor_cannot_write_on_closed_case(app, client, headers_for, advisor):
+    from radia.contracts.handoff import CaseStatus
+
+    case_id = _advisor_case(client, headers_for, advisor)["case"]["case_id"]
+    cases = app.state.api.cases
+    cases.save(cases.get(case_id).model_copy(update={"status": CaseStatus.APPROVED}))
+    response = client.post(
+        f"/advisor/sessions/{case_id}/messages",
+        headers=advisor,
+        json={"message": "hola"},
+    )
+    assert response.status_code == 409
+
+
 # --- Configuración -------------------------------------------------------------
 
 
