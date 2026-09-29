@@ -12,6 +12,7 @@ from radia.backend.agent.llm import (
     Role,
     UnsupportedTopic,
     Usage,
+    _parse_amount,
     fill_template,
     reasons_text,
 )
@@ -230,3 +231,28 @@ def test_ningun_test_instancia_groq_real():
         GroqLanguageModel(settings)
     with pytest.raises(RuntimeError, match="Groq real"):
         groq.Groq(api_key="clave-falsa")
+
+
+@pytest.mark.parametrize(
+    ("text", "amount"),
+    [
+        ("1.000.000,50", 1_000_000.5),
+        ("1,000,000.50", 1_000_000.5),
+        ("5.000", 5000),
+        ("1,5 millones", 1_500_000),
+        ("12.05.2026", None),
+        ("12/05/2026", None),
+        ("1.2.3", None),
+        ("5000 a 24 meses", None),
+        ("9" * 400, None),
+        ("0", None),
+    ],
+)
+def test_parse_amount_nunca_lanza(text, amount):
+    assert _parse_amount(text) == amount
+
+
+def test_mensaje_con_fecha_no_rompe_el_turno():
+    u = classify("Quiero un préstamo de 1.000.000,50 para el 12.05.2026")
+    assert u.product_code == ProductCode.PERSONAL_LOAN
+    assert u.amount_usd is None
