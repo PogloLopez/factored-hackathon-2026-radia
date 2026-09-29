@@ -41,6 +41,5 @@ def test_validate_indice_duplicado_con_datos_invalidos_lanza_error_pandera():
     df = pd.concat([make_gold_features(n=5), make_gold_features(n=5)])
     assert df.index.has_duplicates
     # customer_id duplicado: error real de pandera, no ValueError.
-    with pytest.raises(ERRORS) as exc:
+    with pytest.raises(ERRORS):
         validate(GoldCustomerFeatures, df)
-    assert not isinstance(exc.value, ValueError) or isinstance(exc.value, ERRORS)
