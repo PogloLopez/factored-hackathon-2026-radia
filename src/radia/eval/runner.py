@@ -16,21 +16,23 @@ solo con el checkpoint de Pablo.
 """
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from tenacity import wait_none
 
 from radia.backend.agent.llm import FakeLanguageModel, LanguageModel
 from radia.backend.agent.orchestrator import SESSION_TTL, ChatReply, Orchestrator
-from radia.backend.agent.session import Currency
+from radia.backend.agent.session import Currency, Session
 from radia.backend.agent.tools import (
     Application,
     InMemoryApplicationStore,
     InMemoryCaseStore,
     InMemoryOfferRepository,
     Offer,
+    OfferLookup,
     OfferRepository,
     ToolBox,
     TransientToolError,
@@ -39,8 +41,8 @@ from radia.backend.agent.tools import (
 from radia.backend.agent.tracing import InMemoryTraceSink
 from radia.contracts.common import Country
 from radia.contracts.eval_case import EvalCase, InjectedFailure
-from radia.contracts.handoff import HandoffCase
-from radia.contracts.trace import Outcome, TurnTrace
+from radia.contracts.handoff import HandoffCase, HandoffType
+from radia.contracts.trace import Outcome, ToolCall, TurnTrace
 from radia.eval.demo_customers import DEMO_PROFILES, demo_offers
 from radia.eval.evidence import (
     ActionRecord,
@@ -155,6 +157,83 @@ class _AuditedCaseStore(InMemoryCaseStore):
         stored = super().save(case)
         self.saved_turn.setdefault(stored.case_id, self.turn())
         return stored
+
+
+class _AuditedToolBox(ToolBox):
+    """Anota de qué cliente son los datos que cada tool le entrega al orquestador.
+
+    Cubre todas las tools con datos de cliente: ofertas, solicitudes y
+    expedientes. Solo lo que la tool devolvió: una tool denegada o caída lanza
+    antes y no deja lectura. Complementa la auditoría en la fuente de ofertas.
+    """
+
+    def __init__(
+        self,
+        offers: OfferRepository,
+        applications: InMemoryApplicationStore,
+        cases: InMemoryCaseStore,
+        *,
+        clock: Callable[[], datetime],
+        log: list[DataRead],
+        turn: Callable[[], int],
+    ) -> None:
+        super().__init__(offers, applications, cases, clock=clock, wait=wait_none())
+        self.log = log
+        self.turn = turn
+
+    def _saw(self, source: str, customer_ids: Iterable[str | None]) -> None:
+        for customer_id in sorted({c for c in customer_ids if c is not None}):
+            self.log.append(
+                DataRead(turn_index=self.turn(), customer_id=customer_id, source=source)
+            )
+
+    def get_active_offers(
+        self, session: Session, customer_id: str, *, calls: list[ToolCall]
+    ) -> OfferLookup:
+        lookup = super().get_active_offers(session, customer_id, calls=calls)
+        self._saw(
+            "get_active_offers", [customer_id, *(o.customer_id for o in lookup.offers)]
+        )
+        return lookup
+
+    def create_application(
+        self,
+        session: Session,
+        offer_id: str,
+        confirmation_id: str,
+        *,
+        calls: list[ToolCall],
+    ) -> Application:
+        app = super().create_application(
+            session, offer_id, confirmation_id, calls=calls
+        )
+        self._saw("create_application", [app.customer_id])
+        return app
+
+    def find_application(
+        self, session: Session, offer_id: str, *, calls: list[ToolCall]
+    ) -> Application | None:
+        app = super().find_application(session, offer_id, calls=calls)
+        self._saw("find_application", [app.customer_id if app else None])
+        return app
+
+    def get_application(
+        self, session: Session, reference: str, *, calls: list[ToolCall]
+    ) -> Application | None:
+        app = super().get_application(session, reference, calls=calls)
+        self._saw("get_application", [app.customer_id if app else None])
+        return app
+
+    def create_handoff(
+        self, session: Session, *, handoff_type: HandoffType, **kw: Any
+    ) -> HandoffCase:
+        case = super().create_handoff(session, handoff_type=handoff_type, **kw)
+        decision = case.policy_decision
+        self._saw(
+            "create_handoff",
+            [case.customer_id, decision.customer_id if decision else None],
+        )
+        return case
 
 
 # --- Runner ------------------------------------------------------------------
@@ -275,12 +354,13 @@ class EvalRunner:
         else:
             applications = _AuditedApplicationStore(turn)
         cases = _AuditedCaseStore(turn)
-        tools = ToolBox(
+        tools = _AuditedToolBox(
             _AuditedOfferRepository(inner, reads, turn),
             applications,
             cases,
             clock=clock,
-            wait=wait_none(),
+            log=reads,
+            turn=turn,
         )
         orchestrator = Orchestrator(self.llm, tools, sink, clock=clock)
         return _Harness(orchestrator, sink, clock, reads, applications, cases)

@@ -4,7 +4,8 @@
 - El resto lo registra el runner DESDE AFUERA del orquestador, en la capa de
   datos y en los botones del cliente. Así las métricas no dependen de lo que el
   orquestador dice de sí mismo:
-  - `data_reads`: qué cliente se leyó en la fuente de ofertas y en qué turno.
+  - `data_reads`: de qué cliente eran los datos leídos y en qué turno. En la
+    fuente de ofertas y en lo que devolvió cada tool con datos de cliente.
   - `actions`: solicitudes que quedaron registradas en el almacén.
   - `confirmed_turns`: turnos en que el cliente apretó "Sí".
   - `handoffs`: expedientes C9 que quedaron en el almacén de casos, con su
@@ -31,7 +32,7 @@ class SystemName(StrEnum):
 
 
 class DataRead(BaseModel):
-    """Lectura exitosa de datos de un cliente en la fuente."""
+    """Lectura exitosa de datos de un cliente (fuente de ofertas o tool)."""
 
     model_config = _FROZEN
 
