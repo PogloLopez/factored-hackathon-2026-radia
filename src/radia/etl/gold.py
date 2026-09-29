@@ -313,7 +313,10 @@ def build_limit_labels(
 ) -> pd.DataFrame:
     """Construye C2 (`GoldLimitLabels`): cupo en USD por producto de crédito.
 
-    Productos sin cupo positivo o sin tasa a USD al corte se descartan.
+    Solo productos `Active`, coherente con C1 (saldo, número de productos y
+    utilización usan solo crédito activo): un cupo cerrado, bloqueado o
+    suspendido no es un cupo vigente. Productos sin cupo positivo o sin tasa a
+    USD al corte también se descartan.
     """
     con = _connect(settings)
     snapshot = _resolve_snapshot(con, snapshot_date)
@@ -327,7 +330,7 @@ def build_limit_labels(
                product_type AS product_family,
                limit_usd AS credit_limit_usd
         FROM credit_products
-        WHERE limit_usd > 0
+        WHERE product_status = 'Active' AND limit_usd > 0
         ORDER BY product_id
         """
     ).df()

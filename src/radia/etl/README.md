@@ -60,7 +60,7 @@ uv run radia-etl gold --snapshot 2026-06-17
 ```
 
 - DuckDB sobre `silver/*.parquet`. Solo datos con fecha ≤ corte.
-- `gold/customer_features.parquet` (C1) y `gold/limit_labels.parquet` (C2, cupo en USD por producto de crédito con cupo > 0). Validados con su contrato antes de escribir.
+- `gold/customer_features.parquet` (C1) y `gold/limit_labels.parquet` (C2, cupo en USD por producto de crédito `Active` con cupo > 0; Closed, Blocked y Suspended no son cupo vigente, igual que en C1). Validados con su contrato antes de escribir.
 - USD con la tasa más reciente ≤ corte. Moneda del ingreso por país: MXN, COP, ARS. Saldos y cupos por `products.currency`.
 - Crédito = Credit Card, Personal Loan, Mortgage. Saldo, número de productos y utilización: solo `Active`. Mora: todo crédito no `Closed`.
 - Ingresos 6 meses: depósitos `Approved` con monto en USD > 0. Si `amount_usd` es nulo, `amount` con la tasa de `transactions.currency` al corte; sin tasa se descarta y se avisa en el log. Seis meses hacia atrás desde el corte; un mes sin depósitos cuenta 0.
