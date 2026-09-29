@@ -169,7 +169,7 @@ Reglas:
 - La identidad sale del token. El cuerpo nunca trae `customer_id`.
 - La sesión de chat es de quien la abrió. Otro cliente sobre ella recibe 403.
 - Monto del asesor fuera del rango de negociación del caso: 422. Caso ya decidido: 409.
-- Ofertas: `data_dir/gold/active_offers.parquet` si existe; si no, `demo_offers()`.
+- Ofertas: `demo_offers()` siempre, más `data_dir/gold/active_offers.parquet` si existe. Un id repetido queda con el de Gold. Solo los clientes demo hacen login; el login con clientes de Gold queda para después de la descarga.
 - Moneda de la sesión según el país del cliente demo. Tasas aproximadas y provisionales (`api/state.py`).
 - LLM: `FakeLanguageModel`. Groq solo con `USE_GROQ=true` (gasto: checkpoint de Pablo).
 - Traces JSONL en `data_dir/traces/`.
