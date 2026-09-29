@@ -10,7 +10,9 @@
 - Una solicitud por oferta y cliente. Una segunda con otra confirmación se
   deniega (`application_exists`): se decide denegar y no devolver la existente
   para no reportar como nueva una acción que no ocurrió. El reintento con la
-  misma confirmación devuelve la existente (idempotente).
+  misma confirmación devuelve la existente (idempotente). El chequeo y el alta
+  van en una sola sección crítica del store (`create_if_absent`): dos
+  confirmaciones concurrentes no crean dos solicitudes.
 - Reintentos acotados (tenacity) solo en fallas técnicas
   (`TransientToolError`). Una denegación nunca se reintenta.
 - Ofertas vencidas (`expires_at` pasado) no se devuelven. El orquestador cae a
@@ -23,6 +25,7 @@
 """
 
 import json
+import threading
 import time
 import uuid
 from collections.abc import Callable, Sequence
@@ -179,6 +182,14 @@ class OfferRepository(Protocol):
 class ApplicationStore(Protocol):
     def create(self, application: Application) -> Application: ...
 
+    def create_if_absent(
+        self,
+        customer_id: str,
+        offer_id: str,
+        confirmation_id: str,
+        build: Callable[[], Application],
+    ) -> Application: ...
+
     def get(self, reference: str) -> Application | None: ...
 
     def for_offer(self, customer_id: str, offer_id: str) -> Application | None: ...
@@ -205,30 +216,55 @@ class InMemoryOfferRepository:
 
 
 class InMemoryApplicationStore:
-    """Idempotente por `confirmation_id`: un reintento no duplica la solicitud."""
+    """Idempotente por `confirmation_id`: un reintento no duplica la solicitud.
+
+    Un lock protege el diccionario: la API atiende peticiones en varios hilos.
+    Es reentrante porque `create_if_absent` llama a `create` dentro del lock.
+    """
 
     def __init__(self) -> None:
         self.applications: dict[str, Application] = {}
+        self._lock = threading.RLock()
 
     def create(self, application: Application) -> Application:
-        for existing in self.applications.values():
-            if existing.confirmation_id == application.confirmation_id:
-                return existing
-        self.applications[application.reference] = application
-        return application
+        with self._lock:
+            for existing in self.applications.values():
+                if existing.confirmation_id == application.confirmation_id:
+                    return existing
+            self.applications[application.reference] = application
+            return application
+
+    def create_if_absent(
+        self,
+        customer_id: str,
+        offer_id: str,
+        confirmation_id: str,
+        build: Callable[[], Application],
+    ) -> Application:
+        """Chequeo y alta atómicos. Misma confirmación: la existente. Otra
+        confirmación para la misma oferta del cliente: `application_exists`."""
+        with self._lock:
+            existing = self.for_offer(customer_id, offer_id)
+            if existing is not None:
+                if existing.confirmation_id == confirmation_id:
+                    return existing
+                raise ToolDenied("application_exists")
+            return self.create(build())
 
     def get(self, reference: str) -> Application | None:
-        return self.applications.get(reference)
+        with self._lock:
+            return self.applications.get(reference)
 
     def for_offer(self, customer_id: str, offer_id: str) -> Application | None:
-        return next(
-            (
-                a
-                for a in self.applications.values()
-                if a.customer_id == customer_id and a.offer_id == offer_id
-            ),
-            None,
-        )
+        with self._lock:
+            return next(
+                (
+                    a
+                    for a in self.applications.values()
+                    if a.customer_id == customer_id and a.offer_id == offer_id
+                ),
+                None,
+            )
 
 
 class InMemoryCaseStore:
@@ -383,13 +419,12 @@ class ToolBox:
             # Se registra el monto confirmado, nunca más que el cupo de la oferta.
             if not 0 < pending.limit_usd <= offer.offered_limit_usd:
                 raise ToolDenied("amount_above_offer")
-            existing = self.applications.for_offer(session.customer_id, offer_id)
-            if existing is not None:
-                if existing.confirmation_id == confirmation_id:
-                    return existing
-                raise ToolDenied("application_exists")
-            return self.applications.create(
-                Application(
+            # Chequeo de duplicado y alta en una sola sección crítica del store.
+            return self.applications.create_if_absent(
+                session.customer_id,
+                offer_id,
+                confirmation_id,
+                lambda: Application(
                     reference=_new_id("APP"),
                     customer_id=session.customer_id,
                     offer_id=offer.offer_id,
@@ -397,7 +432,7 @@ class ToolBox:
                     limit_usd=pending.limit_usd,
                     confirmation_id=confirmation_id,
                     created_at=now,
-                )
+                ),
             )
 
         return self._run(calls, name, create)
