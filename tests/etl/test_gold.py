@@ -104,11 +104,9 @@ def test_etiquetas_de_cupo_cumplen_c2(silver_settings):
     validate(GoldLimitLabels, df)
     assert gold_path(silver_settings, "limit_labels").exists()
     limits = dict(zip(df["product_id"], df["credit_limit_usd"], strict=True))
-    # P4 no es crédito y P5 tiene cupo 0.
-    assert limits == pytest.approx(
-        {"P1": 2400.0, "P2": 5000.0, "P3": 60000.0, "P6": 600.0}
-    )
-    assert set(df["product_family"]) == {"Credit Card", "Personal Loan", "Mortgage"}
+    # P4 no es crédito, P5 tiene cupo 0, P3 está cerrado y P6 bloqueado.
+    assert limits == pytest.approx({"P1": 2400.0, "P2": 5000.0})
+    assert set(df["product_family"]) == {"Credit Card", "Personal Loan"}
 
 
 def test_falta_silver(silver_settings):
