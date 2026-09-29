@@ -167,3 +167,40 @@ def test_sin_tasa_de_cambio_los_ratios_quedan_nulos(silver_settings):
     ).df()
     stored["credit_score"] = stored["credit_score"].astype("Int64")
     validate(GoldCustomerFeatures, stored)
+
+
+def _add_transactions(settings, values: str) -> None:
+    """Agrega depósitos al Silver de transactions (el resto de columnas NULL)."""
+    path = silver_path(settings, "transactions")
+    con = duckdb.connect()
+    con.execute(
+        f"""
+        COPY (
+            SELECT * FROM read_parquet({sql_literal(path)})
+            UNION ALL BY NAME
+            SELECT * FROM (VALUES {values})
+                t(transaction_id, transaction_date, customer_id, transaction_type,
+                  transaction_status, amount, currency, amount_usd)
+        ) TO {sql_literal(path.with_suffix(".new"))} (FORMAT parquet)
+        """
+    )
+    con.close()
+    path.with_suffix(".new").replace(path)
+
+
+def test_deposito_sin_amount_usd_usa_amount_con_la_tasa(silver_settings, caplog):
+    # C2 deposita 10000 MXN sin amount_usd: 10000 * 0.06 = 600 USD en el mes 0.
+    # Un depósito en CLP sin amount_usd ni tasa se descarta y se avisa.
+    _add_transactions(
+        silver_settings,
+        "('T20', TIMESTAMP '2026-06-05 09:00:00', 'C2', 'Deposit', 'Approved',"
+        " 10000.00, 'MXN', NULL::DECIMAL(15,2)),"
+        " ('T21', TIMESTAMP '2026-06-06 09:00:00', 'C2', 'Deposit', 'Approved',"
+        " 50000.00, 'CLP', NULL::DECIMAL(15,2))",
+    )
+    with caplog.at_level("WARNING", logger="radia.etl.gold"):
+        df = build_features(silver_settings, SNAPSHOT).set_index("customer_id")
+    assert df.loc["C2", "avg_monthly_inflow_usd_6m"] == pytest.approx(
+        (600 * 6 + 600) / 6
+    )
+    assert "1 depósitos sin amount_usd ni tasa" in caplog.text
