@@ -486,3 +486,34 @@ def test_turnos_concurrentes_no_mezclan_tools(tools, sink, offers_df):
     by_session = {t.session_id: [c.name for c in t.tools] for t in sink.traces}
     assert by_session[second.session_id] == ["get_active_offers"]
     assert by_session[first.session_id] == ["get_active_offers", "create_handoff"]
+
+
+# --- Sesión en handoff -----------------------------------------------------------
+
+
+class SpyLanguageModel(FakeLanguageModel):
+    """Cuenta las llamadas al LLM (cada una sería gasto con Groq)."""
+
+    def __init__(self):
+        super().__init__()
+        self.llm_calls = 0
+
+    def classify(self, message, history):
+        self.llm_calls += 1
+        return super().classify(message, history)
+
+    def render(self, template_id, facts):
+        self.llm_calls += 1
+        return super().render(template_id, facts)
+
+
+def test_handoff_responde_sin_llm_ni_cambiar_idioma(tools, sink):
+    llm = SpyLanguageModel()
+    orch = Orchestrator(llm, tools, sink, clock=tools.clock)
+    session, [reply] = chat(orch, "C1", "Quiero hablar con un asesor")
+    before = llm.llm_calls
+    again = orch.handle_message(session.session_id, "Oi, quero um empréstimo")
+    assert llm.llm_calls == before
+    assert session.language.value == "es"
+    assert reply.handoff_case_id in again.reply and "Tu caso" in again.reply
+    assert last_trace(sink).intent == "in_handoff"
