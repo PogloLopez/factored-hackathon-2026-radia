@@ -4,6 +4,8 @@
 2. Commit, merge o push directo sobre main o develop.
 3. git commit: formatea y corrige con ruff los archivos del commit y los vuelve a agregar.
    Solo bloquea si queda un error que ruff no puede corregir solo.
+4. Cualquier comando `aws s3` o `aws s3api`. El bucket de Factored solo se toca
+   desde el módulo de S3 de radia.etl, con un manifiesto aprobado por Pablo.
 """
 
 import json
@@ -14,6 +16,10 @@ from pathlib import PurePath
 
 PROTECTED = {"main", "develop"}
 ENV_IN_TEXT = re.compile(r"(?<![\w.-])\.env(?!\.example)(\.[\w-]+)?(?![\w.-])")
+# aws o aws.exe (con ruta o comillas) seguido de s3 o s3api.
+AWS_S3_CLI = re.compile(
+    r"""(?:^|[\s&|;({"'\\/])aws(?:\.exe)?["']?\s+s3(?:api)?\b""", re.IGNORECASE
+)
 FILE_TOOLS = {"Read", "Edit", "Write", "MultiEdit", "NotebookEdit"}
 SHELL_TOOLS = {"Bash", "PowerShell"}
 
@@ -128,6 +134,11 @@ def check_bash(cmd: str) -> None:
         block("el comando toca .env. Los secretos no se leen ni se imprimen.")
     if re.search(r"docs[\\/]+pdf", cmd, re.IGNORECASE):
         block("docs/pdf contiene credenciales.")
+    if AWS_S3_CLI.search(cmd):
+        block(
+            "la CLI de aws no toca S3. Usa el módulo de S3 de radia.etl "
+            "(manifiesto aprobado, descarga única)."
+        )
 
     branch = current_branch()
     for sub, args in git_subcommands(cmd):
