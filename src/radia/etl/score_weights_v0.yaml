@@ -23,10 +23,13 @@ components:
     missing_points: 0  # sin buró el puntaje queda nulo de todos modos
 
   # Saldo de crédito sobre ingreso mensual. Penaliza el endeudamiento.
+  # El saldo incluye hipotecas y préstamos (varios años de ingreso), así que el
+  # rango es amplio: la penalización máxima llega con 36 meses de ingreso.
+  # Con 1.5 casi todo cliente con crédito tomaba la penalización máxima.
   debt_to_income:
     feature: debt_to_income
     x_low: 0.0
-    x_high: 1.5
+    x_high: 36.0
     points_low: 100
     points_high: -100
     missing_points: -100  # ingreso 0: no se puede medir la capacidad de pago
