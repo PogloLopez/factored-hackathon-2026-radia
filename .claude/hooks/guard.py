@@ -102,8 +102,8 @@ LINE_CONTINUATION = re.compile(r"[\\`]\r?\n")
 # git o git.exe, con ruta opcional y con o sin comillas, opciones globales
 # (con valor tras espacio o "=", entre comillas o no) y el subcomando.
 # Análisis textual de mejor esfuerzo. Límites conocidos: un -a después de un
-# mensaje con paréntesis no se ve, y opciones de push con valor separado
-# cuentan como posicionales. La garantía dura es la protección de rama en GitHub.
+# mensaje con paréntesis no se ve, opciones de push con valor separado
+# cuentan como posicionales, y prefijos como `FOO=1 git` o `env git` no se detectan. La garantía dura es la protección de rama en GitHub.
 _VALUE = r"""(?:"[^"]*"|'[^']*'|\S+)"""
 _GIT_BIN = (
     r"""(?:"(?:[^"]*[\\/])?git(?:\.exe)?"|'(?:[^']*[\\/])?git(?:\.exe)?'"""
@@ -143,7 +143,8 @@ def check_bash(cmd: str) -> None:
     branch = current_branch()
     for sub, args in git_subcommands(cmd):
         if sub == "push":
-            targets = set(re.findall(r"[\w./-]+", args)) & PROTECTED
+            tokens = re.findall(r"[\w./-]+", args)
+            targets = {t.removeprefix("refs/heads/") for t in tokens} & PROTECTED
             positional = [a for a in args.split() if not a.startswith("-")]
             if targets or (branch in PROTECTED and len(positional) <= 1):
                 block("push directo a main/develop. Abre un PR desde tu rama.")
