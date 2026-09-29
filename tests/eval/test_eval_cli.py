@@ -43,6 +43,10 @@ def test_run_escribe_resultados_y_reporte():
     ):
         assert section in report, section
     assert f"/{n_cases} (" in report  # denominadores explícitos
+    # El rótulo del costo coincide con el cálculo y muestra su denominador.
+    assert "Costo por caso intentado" not in report
+    assert f"costo total / todos los casos ({n_cases})" in report
+    assert "costo total / resoluciones automáticas seguras (Radia " in report
 
 
 def test_split_invalido_falla():
