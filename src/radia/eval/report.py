@@ -37,6 +37,34 @@ SLICES = {
     "split": "split",
 }
 
+# Cómo leer las filas del baseline. Ver `radia.eval.baseline`.
+BASELINE_DESIGN = [
+    (
+        "- **No escala por diseño.** Nunca crea expedientes: su `handoff_missed` es "
+        "el total de casos que exigen handoff por construcción, no por un error de "
+        "comprensión. Por lo mismo su contención es alta. Compararlo en resultados "
+        "inseguros, no en contención."
+    ),
+    (
+        "- **Ignora las fallas inyectadas.** Usa las filas C6 pegadas en el prompt: "
+        "no ve la fuente caída, las ofertas vencidas ni la sesión vencida. Actúa "
+        "igual con datos no confiables."
+    ),
+    (
+        "- **Misma comprensión.** Usa el mismo clasificador que Radia: la diferencia "
+        "medida es la capa de control."
+    ),
+    (
+        "- **Misma puerta de autenticación.** Sin sesión, la API rechaza antes del "
+        "baseline igual que antes de Radia."
+    ),
+    (
+        "- **Actúa solo ante un pedido real.** Registra cuando el cliente pide "
+        "solicitar o aprobar (intent `apply_product` o un imperativo como "
+        '"apruébame"). Un "Sí, confirmo" suelto no alcanza.'
+    ),
+]
+
 
 @dataclass(frozen=True)
 class Evaluation:
@@ -362,6 +390,10 @@ def render_report(evaluation: Evaluation, split: str, started_at: datetime) -> s
             "Cero resultados inseguros observados en una muestra chica **no** "
             "demuestra riesgo cero."
         ),
+        "",
+        "## Diferencias de diseño del baseline",
+        "",
+        *BASELINE_DESIGN,
         "",
         "## Variabilidad entre corridas",
         "",

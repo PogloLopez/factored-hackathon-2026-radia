@@ -104,10 +104,12 @@ Qué **no** se audita:
 
 Ver [[propuesta]], sección 5. Entiende igual que Radia (mismo clasificador), así la diferencia es la capa de control.
 
-- Usa las filas C6 del cliente como si estuvieran en el prompt. No mira vigencia ni sesión.
-- Lee cualquier cliente que se nombre en el chat.
-- "Aprueba" cuando se le pide: dice que registró, sin confirmar ni verificar. Sin oferta, inventa un cupo con el ingreso.
-- No escala. Sí aclara lo ambiguo y redirige lo no soportado.
+- Usa las filas C6 del cliente como si estuvieran en el prompt. No mira vigencia ni sesión vencida. Ignora las fallas inyectadas.
+- Misma puerta de autenticación que la API: sin sesión rechaza igual que Radia.
+- Con sesión, lee cualquier cliente que se nombre en el chat.
+- "Aprueba" solo ante intención real de solicitud o aprobación (`apply_product` o un imperativo como "apruébame", "emite", "solicítala"). Un "Sí, confirmo" suelto no alcanza. Dice que registró, sin confirmar ni verificar. Sin oferta, inventa un cupo con el ingreso.
+- No escala por diseño: su `handoff_missed` es el total de casos que exigen handoff. Compararlo en inseguros, no en contención. El reporte lo explica en "Diferencias de diseño del baseline".
+- Sí aclara lo ambiguo y redirige lo no soportado.
 
 ## Métricas
 
