@@ -5,6 +5,7 @@ Todo con `FakeLanguageModel` y ofertas mock que cumplen C6 (ver conftest).
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
@@ -637,3 +638,23 @@ def test_uso_del_turno_no_mezcla_llamadas_de_otros_turnos(tools, sink):
     # Propias: classify y render del saludo. La ajena no entra al trace.
     assert (trace.input_tokens, trace.output_tokens) == (200, 40)
     assert llm.usage.input_tokens == 300
+
+
+def test_sesiones_concurrentes_no_rompen_la_expulsion(tools, sink):
+    now = [tools.clock()]
+    orch = Orchestrator(
+        FakeLanguageModel(),
+        tools,
+        sink,
+        clock=lambda: now[0],
+        evict_after=timedelta(minutes=10),
+    )
+    old = [orch.start_session("C1").session_id for _ in range(300)]
+    now[0] += timedelta(hours=2)
+    # Cada apertura expulsa mientras otros hilos agregan sesiones.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        new = list(pool.map(lambda _: orch.start_session("C1").session_id, range(300)))
+    assert not set(old) & set(orch.sessions)
+    assert set(new) == set(orch.sessions)
+    with pytest.raises(UnknownSession):
+        orch.handle_message(old[0], "hola")
