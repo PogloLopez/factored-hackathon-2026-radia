@@ -42,6 +42,9 @@ def baseline_results(test: pd.DataFrame) -> pd.DataFrame:
     multiple = test["product_family"].map(
         {family: MULTIPLES[code] for family, code in BASELINE_CODE.items()}
     )
+    unknown = sorted(set(test.loc[multiple.isna(), "product_family"].astype(str)))
+    if unknown:
+        raise ValueError(f"familias sin código de baseline: {unknown}")
     pred = test["monthly_income_usd"] * multiple
     return pd.DataFrame(
         {"lower": pred * (1 - RANGE), "pred": pred, "upper": pred * (1 + RANGE)},

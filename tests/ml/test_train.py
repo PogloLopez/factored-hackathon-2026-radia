@@ -64,9 +64,10 @@ def test_baseline_results_tarjeta_usa_cc_gold():
     assert out["upper"].iloc[0] == pytest.approx(out["pred"].iloc[0] * (1 + RANGE))
 
 
-def test_baseline_results_familia_desconocida_da_nulos():
+def test_baseline_results_familia_desconocida_falla():
     test = pd.DataFrame({"product_family": ["otra"], "monthly_income_usd": [100.0]})
-    assert baseline_results(test)["pred"].isna().all()
+    with pytest.raises(ValueError, match="otra"):
+        baseline_results(test)
 
 
 def test_evaluate_devuelve_overall_y_by_group_con_las_tres_claves():
