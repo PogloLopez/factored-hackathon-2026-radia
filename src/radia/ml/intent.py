@@ -130,14 +130,16 @@ class KeywordBaseline:
             top = sorted(score, key=score.__getitem__, reverse=True)[: self.k]
             self.keywords_[label] = set(top)
         self.default_ = table[LABEL].mode().iloc[0]
+        # Orden de desempate: la clase más frecuente en train gana.
+        self.priority_ = list(table[LABEL].value_counts().index)
         return self
 
     def predict(self, texts: pd.Series) -> np.ndarray:
         out = []
         for text in texts:
             tokens = self._tokens(text)
-            hits = {lbl: len(tokens & kw) for lbl, kw in self.keywords_.items()}
-            best = max(hits, key=hits.__getitem__)
+            hits = {lbl: len(tokens & self.keywords_[lbl]) for lbl in self.priority_}
+            best = max(hits, key=hits.__getitem__)  # max se queda con el primero
             out.append(best if hits[best] > 0 else self.default_)
         return np.array(out, dtype=object)
 
