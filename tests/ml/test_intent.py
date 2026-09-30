@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from pandas.errors import MergeError
 
 from radia.ml.intent import (
     LABEL,
@@ -87,6 +88,21 @@ def test_tabla_recorta_espacios_del_texto():
     assert build_intent_table(inter, trans)[TEXT].iloc[0] == "hola"
 
 
+def test_tabla_interaction_id_duplicado_en_interactions_falla():
+    inter, trans = _crudo(["uno", "dos"], ["A", "B"])
+    inter = pd.concat([inter, inter.iloc[[0]]], ignore_index=True)
+    with pytest.raises(MergeError):
+        build_intent_table(inter, trans)
+
+
+def test_tabla_acento_se_normaliza_a_minusculas():
+    inter, trans = _crudo(["uno", "dos"], ["A", "B"], ["MEXICAN", "Colombian"])
+    assert list(build_intent_table(inter, trans)["accent"]) == [
+        "mexican",
+        "colombian",
+    ]
+
+
 # --- modelos ---
 
 
@@ -121,6 +137,29 @@ def test_keywords_sin_coincidencias_predice_la_mayoritaria(tabla):
     pred = base.predict(pd.Series(["zzzz qqqq", "xyzxyz"]))
     assert list(pred) == [base.default_, base.default_]
     assert base.default_ == train[LABEL].mode().iloc[0]
+
+
+@pytest.mark.parametrize("nulo", [np.nan, None])
+def test_keywords_predict_tolera_nulos_y_devuelve_la_por_defecto(tabla, nulo):
+    train, _ = _split(tabla)
+    base = KeywordBaseline().fit(train)
+    pred = base.predict(pd.Series([nulo, "quiero una queja", nulo], dtype=object))
+    assert pred[0] == base.default_
+    assert pred[2] == base.default_
+    assert pred[1] == "Complaint"
+
+
+@pytest.mark.parametrize("frecuente", ["A", "B"])
+def test_keywords_empate_gana_la_clase_mas_frecuente_en_train(frecuente):
+    otra = "B" if frecuente == "A" else "A"
+    # "comun" es keyword de ambas clases; "solo_a"/"solo_b" las distinguen.
+    textos = [f"comun solo_{frecuente.lower()}"] * 3 + [f"comun solo_{otra.lower()}"]
+    etiquetas = [frecuente] * 3 + [otra]
+    inter, trans = _crudo(textos, etiquetas)
+    base = KeywordBaseline().fit(build_intent_table(inter, trans))
+    assert "comun" in base.keywords_["A"] and "comun" in base.keywords_["B"]
+    assert base.priority_[0] == frecuente
+    assert list(base.predict(pd.Series(["comun"]))) == [frecuente]
 
 
 def test_keywords_solo_salen_de_train(tabla):
@@ -168,3 +207,32 @@ def test_evaluate_intent_devuelve_una_fila_por_acento(tabla):
     assert grupo.index.name == "accent"
     assert grupo["n"].sum() == len(test)
     assert ev.overall["n"] == len(test)
+
+
+def test_metricas_labels_fijos_bajan_el_f1_si_falta_una_clase():
+    y_true = pd.Series(["A", "A", "B", "B"])
+    y_pred = np.array(["A", "A", "B", "B"], dtype=object)
+    sin = intent_metrics(y_true, y_pred)
+    con = intent_metrics(y_true, y_pred, labels=["A", "B", "C"])
+    assert sin["f1_macro"] == pytest.approx(1.0)
+    # C no aparece ni en test ni en pred: F1 0 -> (1 + 1 + 0) / 3
+    assert con["f1_macro"] == pytest.approx(2 / 3)
+    assert con["f1_macro"] < sin["f1_macro"]
+    assert con["accuracy"] == sin["accuracy"] == pytest.approx(1.0)
+
+
+def test_evaluate_intent_pasa_labels_a_global_y_por_grupo():
+    test = pd.DataFrame(
+        {
+            LABEL: ["A", "B", "A", "B"],
+            "accent": ["mexican", "mexican", "colombian", "colombian"],
+        }
+    )
+    pred = np.array(["A", "B", "A", "B"], dtype=object)
+    sin = evaluate_intent(test, pred)
+    con = evaluate_intent(test, pred, labels=["A", "B", "C"])
+    assert sin.overall["f1_macro"] == pytest.approx(1.0)
+    assert con.overall["f1_macro"] == pytest.approx(2 / 3)
+    grupo = con.by_group["accent"]
+    assert grupo["f1_macro"].to_numpy() == pytest.approx([2 / 3, 2 / 3])
+    assert sin.by_group["accent"]["f1_macro"].to_numpy() == pytest.approx([1, 1])
