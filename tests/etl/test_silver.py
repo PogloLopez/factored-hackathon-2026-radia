@@ -162,3 +162,45 @@ def test_version_empatada_es_determinista_y_se_reporta(built):
     assert _rows(settings, "daily_exchange_rates", "*") == rows_first
     assert first.ambiguous_versions > 0
     assert second.ambiguous_versions == first.ambiguous_versions
+
+
+def _silver_col(settings, spec, csv, col):
+    """Escribe el CSV como raw de la tabla, construye Bronze y Silver y lee la columna."""
+    (settings.raw_dir / "data" / f"{spec.name}.csv").write_text(csv, encoding="utf-8")
+    build_bronze(spec, settings)
+    build_silver(spec, settings)
+    pk = spec.primary_key[0]
+    return [r[1] for r in _rows(settings, spec.name, f"{pk}, {col}")]
+
+
+def test_value_map_country_traduce_y_respeta_trim(raw_settings):
+    csv = "customer_id,country\nC1,México\nC2, México \nC3,Colombia\n"
+    got = _silver_col(raw_settings, TABLES["customers"], csv, "country")
+    assert got == ["Mexico", "Mexico", "Colombia"]
+
+
+def test_value_map_product_type_traduce_solo_credito(raw_settings):
+    csv = (
+        "product_id,customer_id,product_type\n"
+        "P1,C1,Tarjeta Crédito\n"
+        "P2,C1,Préstamo Personal\n"
+        "P3,C1,Préstamo Hipotecario\n"
+        "P4,C1,Cuenta Ahorro\n"
+    )
+    got = _silver_col(raw_settings, TABLES["products"], csv, "product_type")
+    assert got == ["Credit Card", "Personal Loan", "Mortgage", "Cuenta Ahorro"]
+
+
+def test_value_map_nulo_y_vacio_pasan_sin_error(raw_settings):
+    csv = "customer_id,country\nC1,\nC2,México\n"
+    got = _silver_col(raw_settings, TABLES["customers"], csv, "country")
+    assert got == [None, "Mexico"]
+
+
+def test_value_map_con_comilla_simple_no_rompe_sql(raw_settings):
+    spec = TABLES["customers"].model_copy(
+        update={"value_map": {"country": {"Côte d'Ivoire": "O'Brien"}}}
+    )
+    csv = "customer_id,country\nC1,Côte d'Ivoire\nC2,Colombia\n"
+    got = _silver_col(raw_settings, spec, csv, "country")
+    assert got == ["O'Brien", "Colombia"]
