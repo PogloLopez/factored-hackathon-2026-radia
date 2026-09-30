@@ -92,7 +92,9 @@ def build_silver(
             f"WHEN {sql_literal(src)} THEN {sql_literal(dst)}"
             for src, dst in mapping.items()
         )
-        raw[c] = f"CASE {raw[c]} {cases} ELSE {raw[c]} END"
+        # NFC igual que las claves del mapa (ver TableSpec).
+        clean = f"nfc_normalize({raw[c]})"
+        raw[c] = f"CASE {clean} {cases} ELSE {raw[c]} END"
     typed = {
         c: raw[c] if t == "VARCHAR" else f"TRY_CAST({raw[c]} AS {t})"
         for c, t in spec.columns.items()
