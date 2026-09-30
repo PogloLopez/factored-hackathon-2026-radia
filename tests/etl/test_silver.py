@@ -1,6 +1,7 @@
 """Tests de la capa Silver y su reporte de calidad (raw sintético del conftest)."""
 
 import json
+import unicodedata
 from decimal import Decimal
 
 import duckdb
@@ -207,7 +208,8 @@ def test_value_map_con_comilla_simple_no_rompe_sql(raw_settings):
 
 
 def test_value_map_country_en_nfd_tambien_se_traduce(raw_settings):
-    nfd = "México"
+    nfd = unicodedata.normalize("NFD", "México")
+    assert nfd != "México"  # explícito: un editor podría normalizar el literal
     csv = f"customer_id,country\nC1,{nfd}\nC2,México\nC3,Colombia\n"
     got = _silver_col(raw_settings, TABLES["customers"], csv, "country")
     assert got == ["Mexico", "Mexico", "Colombia"]
