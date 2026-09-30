@@ -55,8 +55,12 @@ class QuantileLimitModel:
 
     def fit(self, table: pd.DataFrame) -> Self:
         """`table` sale de `build_training_table`. Cupos en USD, todos > 0 (C2)."""
+        limits = table[TARGET].to_numpy(dtype="float64")
+        # El log de un cupo <= 0 da -inf o nan y el boosting falla sin decir por qué.
+        if limits.size == 0 or not (np.isfinite(limits) & (limits > 0)).all():
+            raise ValueError("se exigen filas con cupos finitos y > 0")
         x = to_model_matrix(table)
-        y = np.log(table[TARGET].to_numpy(dtype="float64"))
+        y = np.log(limits)
         for model in self._models:
             model.fit(x, y)
         self._fitted = True
