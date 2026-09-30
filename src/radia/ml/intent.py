@@ -130,9 +130,10 @@ class KeywordBaseline:
             }
             top = sorted(score, key=score.__getitem__, reverse=True)[: self.k]
             self.keywords_[label] = set(top)
-        self.default_ = table[LABEL].mode().iloc[0]
-        # Orden de desempate: la clase más frecuente en train gana.
+        # Orden de desempate: la clase más frecuente en train gana. La clase por
+        # defecto sale del mismo orden para que nunca se contradigan.
         self.priority_ = list(table[LABEL].value_counts().index)
+        self.default_ = self.priority_[0]
         return self
 
     def predict(self, texts: pd.Series) -> np.ndarray:
