@@ -43,6 +43,9 @@ class QualityReport(BaseModel):
     orphans: dict[str, int | None]
     missing_columns: list[str]
     unexpected_columns: list[str]
+    # Filas traducidas por `value_map`, por columna. En 0 el mapeo dejó de
+    # aplicar (p. ej. cambió el formato del origen): revisar.
+    mapped_rows: dict[str, int] = {}
 
 
 def ident(name: str) -> str:
@@ -87,7 +90,10 @@ def build_silver(
         c: f"NULLIF(TRIM({ident(c)}), '')" if c in bronze_cols else "NULL::VARCHAR"
         for c in spec.columns
     }
+    mapped_sql = {}
     for c, mapping in spec.value_map.items():
+        keys = ", ".join(sql_literal(k) for k in mapping)
+        mapped_sql[c] = f"COUNT(*) FILTER (WHERE nfc_normalize({raw[c]}) IN ({keys}))"
         cases = " ".join(
             f"WHEN {sql_literal(src)} THEN {sql_literal(dst)}"
             for src, dst in mapping.items()
@@ -106,6 +112,10 @@ def build_silver(
     )
     failures_row = con.execute(f"SELECT {failures_sql} FROM bronze").fetchone()
     cast_failures = dict(zip(spec.columns, failures_row, strict=True))
+    mapped_rows = {}
+    if mapped_sql:
+        row = con.execute(f"SELECT {', '.join(mapped_sql.values())} FROM bronze")
+        mapped_rows = dict(zip(mapped_sql, row.fetchone(), strict=True))
 
     cols = ", ".join(f"{typed[c]} AS {ident(c)}" for c in spec.columns)
     con.execute(
@@ -210,6 +220,7 @@ def build_silver(
         orphans=orphans,
         missing_columns=missing,
         unexpected_columns=unexpected,
+        mapped_rows=mapped_rows,
     )
     path = report_path(settings, spec.name)
     path.parent.mkdir(parents=True, exist_ok=True)
