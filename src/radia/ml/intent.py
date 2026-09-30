@@ -150,26 +150,33 @@ class IntentEvaluation:
     by_group: dict[str, pd.DataFrame]
 
 
-def intent_metrics(y_true: pd.Series, y_pred: np.ndarray) -> dict[str, float]:
+def intent_metrics(
+    y_true: pd.Series, y_pred: np.ndarray, labels: list[str] | None = None
+) -> dict[str, float]:
+    """`labels`: las clases de train. Fijas, una clase ausente en test cuenta como
+    F1 0 en vez de desaparecer del promedio y maquillar el F1 macro."""
     if len(y_true) == 0:
         raise ValueError("sin filas para evaluar")
+    f1 = f1_score(y_true, y_pred, labels=labels, average="macro", zero_division=0)
     return {
         "n": float(len(y_true)),
         "accuracy": float(accuracy_score(y_true, y_pred)),
-        "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
+        "f1_macro": float(f1),
     }
 
 
-def evaluate_intent(test: pd.DataFrame, y_pred: np.ndarray) -> IntentEvaluation:
+def evaluate_intent(
+    test: pd.DataFrame, y_pred: np.ndarray, labels: list[str] | None = None
+) -> IntentEvaluation:
     pred = pd.Series(y_pred, index=test.index)
     by_group = {}
     for g in GROUPS:
         rows = {
-            key: intent_metrics(part[LABEL], pred.loc[part.index].to_numpy())
+            key: intent_metrics(part[LABEL], pred.loc[part.index].to_numpy(), labels)
             for key, part in test.groupby(g, sort=True)
         }
         by_group[g] = pd.DataFrame.from_dict(rows, orient="index").rename_axis(g)
-    return IntentEvaluation(intent_metrics(test[LABEL], y_pred), by_group)
+    return IntentEvaluation(intent_metrics(test[LABEL], y_pred, labels), by_group)
 
 
 def make_mock_calls(n: int = 2000, seed: int = 0) -> tuple[pd.DataFrame, pd.DataFrame]:
