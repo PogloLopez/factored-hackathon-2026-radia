@@ -1,5 +1,6 @@
 """Tests de radia.ml.intent."""
 
+import mlflow
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,6 +16,7 @@ from radia.ml.intent import (
     evaluate_intent,
     intent_metrics,
     make_mock_calls,
+    run_intent_experiment,
 )
 
 
@@ -236,3 +238,66 @@ def test_evaluate_intent_pasa_labels_a_global_y_por_grupo():
     grupo = con.by_group["accent"]
     assert grupo["f1_macro"].to_numpy() == pytest.approx([2 / 3, 2 / 3])
     assert sin.by_group["accent"]["f1_macro"].to_numpy() == pytest.approx([1, 1])
+
+
+# --- run_intent_experiment ---
+
+
+def test_experimento_registra_params_y_metricas_en_el_run():
+    inter, trans = make_mock_calls(n=600, seed=1)
+    with mlflow.start_run() as run:
+        evs = run_intent_experiment(inter, trans, seed=3, test_size=0.25)
+    assert set(evs) == {"model", "baseline_majority", "baseline_keywords"}
+    data = mlflow.get_run(run.info.run_id).data
+    tabla = build_intent_table(inter, trans)
+    n_train, n_test = int(data.params["n_train"]), int(data.params["n_test"])
+    assert n_train + n_test == len(tabla)
+    assert n_train > 0 and n_test > 0
+    assert int(data.params["n_classes"]) >= 2
+    assert data.params["data_source"] == "mock"
+    assert data.params["seed"] == "3"
+    assert data.params["test_size"] == "0.25"
+    assert data.params["model_version"] == IntentModel.version
+    assert data.params["baseline_majority_version"] == MajorityBaseline.version
+    assert data.params["baseline_keywords_version"] == KeywordBaseline.version
+    for nombre, ev in evs.items():
+        for k, v in ev.overall.items():
+            assert data.metrics[f"{nombre}_{k}"] == pytest.approx(v)
+    assert data.metrics["model_accuracy"] > data.metrics["baseline_majority_accuracy"]
+
+
+def test_experimento_ningun_cliente_en_train_y_test(monkeypatch):
+    inter, trans = make_mock_calls(n=600, seed=1)
+    tabla = build_intent_table(inter, trans)
+    capturado = []
+    original = IntentModel.fit
+
+    def espia(self, table):
+        capturado.append(table)
+        return original(self, table)
+
+    monkeypatch.setattr(IntentModel, "fit", espia)
+    with mlflow.start_run() as run:
+        run_intent_experiment(inter, trans, seed=0)
+    assert len(capturado) == 1
+    clientes_train = set(capturado[0]["customer_id"])
+    test = tabla[~tabla["customer_id"].isin(clientes_train)]
+    assert len(test) > 0
+    assert clientes_train.isdisjoint(set(test["customer_id"]))
+    # Todas las filas de un cliente de train quedaron en train.
+    assert len(capturado[0]) == tabla["customer_id"].isin(clientes_train).sum()
+    data = mlflow.get_run(run.info.run_id).data
+    assert int(data.params["n_test"]) == len(test)
+
+
+def test_experimento_sin_run_activo_falla():
+    inter, trans = make_mock_calls(n=100, seed=0)
+    assert mlflow.active_run() is None
+    with pytest.raises(RuntimeError, match="run activo"):
+        run_intent_experiment(inter, trans)
+
+
+def test_experimento_con_tabla_vacia_falla():
+    inter, trans = _crudo(["  ", None], ["A", "B"])
+    with mlflow.start_run(), pytest.raises(ValueError, match="sin transcripciones"):
+        run_intent_experiment(inter, trans)
