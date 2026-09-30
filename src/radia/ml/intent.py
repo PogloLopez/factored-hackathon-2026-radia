@@ -38,7 +38,11 @@ def build_intent_table(
         ["interaction_id", "customer_id", "customer_text", "detected_accent"]
     ]
     reasons = interactions[["interaction_id", label]]
-    table = calls.merge(reasons, on="interaction_id", how="inner")
+    # Una etiqueta por interacción. Duplicados multiplicarían filas y podrían
+    # cruzar train y test: mejor fallar (Silver ya deja una fila por PK).
+    table = calls.merge(
+        reasons, on="interaction_id", how="inner", validate="many_to_one"
+    )
     table = table.rename(
         columns={"customer_text": TEXT, label: LABEL, "detected_accent": "accent"}
     )
