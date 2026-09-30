@@ -4,9 +4,10 @@ Tipos DuckDB tomados de [[latam_bank_complete_data_dictionary]]. Si los datos
 reales traen otro formato, se ajusta aquí y no en el código de las capas.
 """
 
+import unicodedata
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ForeignKey(BaseModel):
@@ -34,6 +35,17 @@ class TableSpec(BaseModel):
     # Traducción de valores reales al vocabulario de los contratos, por columna.
     # Un valor que no está en el mapa pasa tal cual.
     value_map: dict[str, dict[str, str]] = {}
+
+    @field_validator("value_map")
+    @classmethod
+    def nfc_keys(
+        cls, value_map: dict[str, dict[str, str]]
+    ) -> dict[str, dict[str, str]]:
+        # Silver compara en NFC: "é" puede venir como un carácter o como "e" + tilde.
+        return {
+            col: {unicodedata.normalize("NFC", k): v for k, v in mapping.items()}
+            for col, mapping in value_map.items()
+        }
 
     @model_validator(mode="after")
     def check_value_map(self) -> Self:
