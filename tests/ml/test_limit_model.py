@@ -121,3 +121,16 @@ def test_mismo_seed_mismo_resultado(table):
     a = QuantileLimitModel(seed=3, max_iter=20).fit(table).predict_table(table)
     b = QuantileLimitModel(seed=3, max_iter=20).fit(table).predict_table(table)
     pd.testing.assert_frame_equal(a, b)
+
+
+@pytest.mark.parametrize("bad", [0.0, -10.0, float("nan"), float("inf")])
+def test_fit_rechaza_cupos_invalidos(table, bad):
+    table = table.copy()
+    table.loc[table.index[0], "credit_limit_usd"] = bad
+    with pytest.raises(ValueError, match="cupos finitos"):
+        QuantileLimitModel(max_iter=5).fit(table)
+
+
+def test_fit_rechaza_tabla_vacia(table):
+    with pytest.raises(ValueError, match="cupos finitos"):
+        QuantileLimitModel(max_iter=5).fit(table.iloc[0:0])
