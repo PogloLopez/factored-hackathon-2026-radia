@@ -8,7 +8,7 @@ import pytest
 from moto import mock_aws
 from typer.testing import CliRunner
 
-from radia.config import Settings
+from radia.config import CREDIT_TABLES, Settings
 from radia.etl import cli
 
 runner = CliRunner()
@@ -40,6 +40,39 @@ def test_manifest_imprime_resumen_y_guarda(settings):
 def test_manifest_rechaza_tablas_fuera_de_alcance(settings):
     result = runner.invoke(cli.app, ["manifest", "--tables", "digital_events"])
     assert result.exit_code != 0
+
+
+def test_manifest_acepta_tablas_de_llamadas(settings):
+    c = boto3.client("s3", region_name="us-east-1")
+    c.put_object(
+        Bucket="test-bucket",
+        Key="data/call_transcripts/a.csv",
+        Body=b"transcript_id\nX\n",
+    )
+    result = runner.invoke(cli.app, ["manifest", "--tables", "call_transcripts"])
+    assert result.exit_code == 0, result.output
+    assert "call_transcripts" in result.output
+    saved = next(settings.manifest_dir.glob("manifest_*.json")).read_text()
+    assert "data/call_transcripts/a.csv" in saved
+
+
+def test_manifest_default_sigue_siendo_credito(settings):
+    c = boto3.client("s3", region_name="us-east-1")
+    c.put_object(Bucket="test-bucket", Key="data/call_transcripts/a.csv", Body=b"x\n")
+    result = runner.invoke(cli.app, ["manifest"])
+    assert result.exit_code == 0, result.output
+    saved = next(settings.manifest_dir.glob("manifest_*.json")).read_text()
+    assert "call_transcripts" not in saved
+    assert "data/customers.csv" in saved
+    assert cli.CREDIT_TABLES == CREDIT_TABLES
+
+
+def test_manifest_rechaza_mezcla_con_tabla_fuera_de_alcance(settings):
+    result = runner.invoke(
+        cli.app, ["manifest", "--tables", "call_transcripts,digital_events"]
+    )
+    assert result.exit_code != 0
+    assert not list(settings.manifest_dir.glob("manifest_*.json"))
 
 
 def test_download_exige_aprobacion(settings):
@@ -103,3 +136,22 @@ def test_score_sin_gold_falla(silver_settings, monkeypatch):
     monkeypatch.setattr(cli, "get_settings", lambda: silver_settings)
     result = runner.invoke(cli.app, ["score"])
     assert result.exit_code != 0
+
+
+def test_bronze_y_silver_de_call_transcripts_por_cli(raw_settings, monkeypatch):
+    monkeypatch.setattr(cli, "get_settings", lambda: raw_settings)
+    folder = raw_settings.raw_dir / "data" / "call_transcripts"
+    folder.mkdir(parents=True)
+    (folder / "call_transcripts_1.csv").write_text(
+        "transcript_id,interaction_id,process_date,customer_id,full_text,duration_seconds\n"
+        "TR1,I1,2026-01-01,C1,hola,60\n"
+        "TR1,I1,2026-01-01,C1,hola,60\n"
+        ",I2,2026-01-01,C1,sin pk,10\n",
+        encoding="utf-8",
+    )
+    args = ["--tables", "call_transcripts"]
+    assert runner.invoke(cli.app, ["bronze", *args]).exit_code == 0
+    result = runner.invoke(cli.app, ["silver", *args])
+    assert result.exit_code == 0, result.output
+    assert (raw_settings.data_dir / "silver" / "call_transcripts.parquet").exists()
+    assert (raw_settings.data_dir / "quality" / "call_transcripts.json").exists()
