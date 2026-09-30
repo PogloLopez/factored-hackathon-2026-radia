@@ -269,23 +269,28 @@ def test_experimento_registra_params_y_metricas_en_el_run():
 def test_experimento_ningun_cliente_en_train_y_test(monkeypatch):
     inter, trans = make_mock_calls(n=600, seed=1)
     tabla = build_intent_table(inter, trans)
-    capturado = []
-    original = IntentModel.fit
+    entrenado, evaluado = [], []
+    fit_original, predict_original = IntentModel.fit, IntentModel.predict
 
-    def espia(self, table):
-        capturado.append(table)
-        return original(self, table)
+    def espia_fit(self, table):
+        entrenado.append(table)
+        return fit_original(self, table)
 
-    monkeypatch.setattr(IntentModel, "fit", espia)
+    def espia_predict(self, texts):
+        evaluado.append(texts)
+        return predict_original(self, texts)
+
+    monkeypatch.setattr(IntentModel, "fit", espia_fit)
+    monkeypatch.setattr(IntentModel, "predict", espia_predict)
     with mlflow.start_run() as run:
         run_intent_experiment(inter, trans, seed=0)
-    assert len(capturado) == 1
-    clientes_train = set(capturado[0]["customer_id"])
-    test = tabla[~tabla["customer_id"].isin(clientes_train)]
-    assert len(test) > 0
-    assert clientes_train.isdisjoint(set(test["customer_id"]))
-    # Todas las filas de un cliente de train quedaron en train.
-    assert len(capturado[0]) == tabla["customer_id"].isin(clientes_train).sum()
+    assert len(entrenado) == 1 and len(evaluado) == 1
+    train, textos_test = entrenado[0], evaluado[0]
+    # Lo que realmente se evaluó, no "lo que no está en train".
+    test = tabla.loc[textos_test.index]
+    assert list(test[TEXT]) == list(textos_test)
+    assert set(train["customer_id"]).isdisjoint(set(test["customer_id"]))
+    assert len(train) + len(test) == len(tabla)
     data = mlflow.get_run(run.info.run_id).data
     assert int(data.params["n_test"]) == len(test)
 
