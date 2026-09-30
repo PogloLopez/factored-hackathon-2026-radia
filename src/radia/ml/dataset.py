@@ -64,7 +64,9 @@ def to_model_matrix(table: pd.DataFrame) -> pd.DataFrame:
     for col in NUMERIC_FEATURES:
         x[col] = pd.to_numeric(table[col], errors="coerce").astype("float64")
     for col, categories in CATEGORICAL_FEATURES.items():
-        x[col] = pd.Categorical(table[col], categories=categories)
+        # Un valor fuera del vocabulario queda nulo, sin depender del casteo de pandas.
+        known = table[col].where(table[col].isin(categories))
+        x[col] = pd.Categorical(known, categories=categories)
     return x
 
 
