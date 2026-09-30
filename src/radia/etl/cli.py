@@ -7,7 +7,7 @@ from typing import Annotated
 import duckdb
 import typer
 
-from radia.config import CREDIT_TABLES, get_settings
+from radia.config import ALLOWED_TABLES, CREDIT_TABLES, get_settings
 from radia.etl import s3
 from radia.etl.bronze import build_bronze
 from radia.etl.gold import build_features, build_limit_labels, gold_path
@@ -42,9 +42,9 @@ def manifest(
     settings = get_settings()
     bucket = _require_bucket()
     names = tuple(t.strip() for t in tables.split(",") if t.strip())
-    unknown = set(names) - set(CREDIT_TABLES)
+    unknown = set(names) - set(ALLOWED_TABLES)
     if unknown:
-        raise typer.BadParameter(f"tablas fuera del alcance de crédito: {unknown}")
+        raise typer.BadParameter(f"tablas fuera del alcance: {unknown}")
     result = s3.build_manifest(
         s3.make_client(settings), bucket, settings.s3_prefix, names
     )
