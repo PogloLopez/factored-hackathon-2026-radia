@@ -88,3 +88,20 @@ def test_train_guarda_artefactos_en_data_dir(settings, tmp_path):
     assert result.exit_code == 0, result.output
     csvs = list((settings.data_dir / "mlartifacts").rglob("*.csv"))
     assert csvs, "los CSV por grupo deberían quedar en data_dir/mlartifacts"
+
+
+def test_train_con_experimento_borrado_explica_como_restaurar(settings, tmp_path):
+    import mlflow
+
+    uri = _uri(tmp_path)
+    assert (
+        runner.invoke(cli.app, ["train", "--mock", "--tracking-uri", uri]).exit_code
+        == 0
+    )
+    mlflow.set_tracking_uri(uri)
+    mlflow.delete_experiment(
+        mlflow.get_experiment_by_name(cli.EXPERIMENT).experiment_id
+    )
+    result = runner.invoke(cli.app, ["train", "--mock", "--tracking-uri", uri])
+    assert result.exit_code != 0
+    assert "restore" in " ".join(result.output.split())
