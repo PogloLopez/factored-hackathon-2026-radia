@@ -125,3 +125,11 @@ def test_predict_sin_nadie_con_ingreso_devuelve_lista_vacia():
     model = FittedIncomeMultipleBaseline().fit(_tabla())
     features = pd.DataFrame({"customer_id": ["C1"], "monthly_income_usd": [np.nan]})
     assert model.predict(features, ProductCode.CC_BASIC) == []
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, np.nan, np.inf])
+def test_fit_rechaza_cupos_invalidos(bad):
+    tabla = _tabla()
+    tabla.loc["a", "credit_limit_usd"] = bad
+    with pytest.raises(ValueError, match="cupos finitos"):
+        FittedIncomeMultipleBaseline().fit(tabla)
