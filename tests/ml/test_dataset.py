@@ -55,7 +55,7 @@ def test_etiqueta_sin_features_del_dueno_se_descarta(mocks):
 
 
 def test_snapshot_distinto_no_une(mocks):
-    features, labels = mocks
+    _, labels = mocks
     otras = make_gold_features(300, seed=1, snapshot_date="2026-05-17")
     assert build_training_table(otras, labels).empty
 
