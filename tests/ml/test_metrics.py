@@ -107,3 +107,46 @@ def test_por_grupo_categorico_omite_categorias_sin_filas():
 def test_por_grupo_columna_inexistente():
     with pytest.raises(KeyError):
         metrics_by_group(_results(), "country")
+
+
+@pytest.mark.parametrize("col", ["y_true", "pred", "lower", "upper"])
+def test_nulos_en_columnas_de_metricas(col):
+    df = _results()
+    df.loc[0, col] = None
+    with pytest.raises(ValueError, match="hay nulos en y_true, pred, lower o upper"):
+        limit_metrics(df)
+
+
+@pytest.mark.parametrize("col", ["y_true", "pred"])
+@pytest.mark.parametrize("bad", [0.0, -5.0])
+def test_y_true_y_pred_deben_ser_positivos(col, bad):
+    df = _results()
+    df.loc[1, col] = bad
+    with pytest.raises(ValueError, match="y_true y pred deben ser > 0"):
+        limit_metrics(df)
+
+
+def test_lower_mayor_que_upper():
+    df = _results()
+    df.loc[2, "lower"] = 500.0  # upper=420
+    with pytest.raises(ValueError, match=r"lower <= upper"):
+        limit_metrics(df)
+
+
+def test_lower_igual_a_upper_es_valido():
+    df = _results()
+    df.loc[0, ["lower", "upper"]] = 100.0
+    assert limit_metrics(df)["n"] == 3.0
+
+
+def test_por_grupo_nulos_en_la_columna_by():
+    df = _results().assign(country=["MX", None, "CO"])
+    with pytest.raises(ValueError, match="hay nulos en country"):
+        metrics_by_group(df, "country")
+
+
+def test_por_grupo_propaga_validacion_de_entrada():
+    df = _results().assign(country="MX")
+    df.loc[0, "y_true"] = 0.0
+    with pytest.raises(ValueError, match="y_true y pred deben ser > 0"):
+        metrics_by_group(df, "country")
