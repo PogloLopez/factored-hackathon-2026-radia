@@ -109,10 +109,10 @@ def test_run_experiment_registra_params_y_metricas(mocks):
     assert data.params["model_version"] == model.version
     assert data.params["baseline_version"] == IncomeMultipleBaseline.version
     assert {"n_train", "n_test", "quantiles"} <= set(data.params)
-    for name in ("model", "baseline"):
+    for name in ("model", "baseline", "baseline_fitted"):
         for key, value in evaluations[name].overall.items():
             assert data.metrics[f"{name}_{key}"] == pytest.approx(value)
-    assert set(evaluations) == {"model", "baseline"}
+    assert set(evaluations) == {"model", "baseline", "baseline_fitted"}
 
 
 def test_run_experiment_registra_tablas_por_grupo(mocks):
@@ -122,7 +122,11 @@ def test_run_experiment_registra_tablas_por_grupo(mocks):
         a.path
         for a in mlflow.MlflowClient().list_artifacts(run.info.run_id, "by_group")
     }
-    esperados = {f"by_group/{n}_{g}.csv" for n in ("model", "baseline") for g in GROUPS}
+    esperados = {
+        f"by_group/{n}_{g}.csv"
+        for n in ("model", "baseline", "baseline_fitted")
+        for g in GROUPS
+    }
     assert artifacts == esperados
 
 

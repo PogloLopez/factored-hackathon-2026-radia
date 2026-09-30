@@ -1,8 +1,10 @@
-"""Entrena el modelo de cupo y lo compara con el baseline sobre el mismo test.
+"""Entrena el modelo de cupo y lo compara con dos baselines sobre el mismo test.
 
+- Baselines: el oficial de múltiplos fijos y uno de múltiplos ajustados con
+  train por familia (`fitted_baseline.py`).
 - Split por cliente (`split_by_customer`). El test no se usa para ajustar nada.
-- Modelo y baseline se entrenan y evalúan solo con productos cuyo dueño tiene
-  ingreso > 0. Sin ingreso ninguno de los dos predice (C4). Las filas
+- Modelo y baselines se entrenan y evalúan solo con productos cuyo dueño tiene
+  ingreso > 0. Sin ingreso ninguno predice (C4). Las filas
   descartadas se registran.
 - Métricas globales y por país, segmento y familia (fairness). Se registran en
   MLflow con los parámetros del experimento.
@@ -17,6 +19,7 @@ import pandas as pd
 from radia.contracts.common import ProductCode, ProductFamily
 from radia.ml.baseline import MULTIPLES, RANGE, IncomeMultipleBaseline
 from radia.ml.dataset import TARGET, build_training_table, split_by_customer
+from radia.ml.fitted_baseline import FittedIncomeMultipleBaseline
 from radia.ml.limit_model import QuantileLimitModel
 from radia.ml.metrics import limit_metrics, metrics_by_group
 
@@ -87,9 +90,12 @@ def run_experiment(
         raise ValueError("el test no tiene productos con ingreso > 0")
 
     model = QuantileLimitModel(seed=seed).fit(train)
+    # Baseline fuerte: si el modelo no le gana, las features no aportan más que el ingreso.
+    fitted = FittedIncomeMultipleBaseline(model.quantiles).fit(train)
     evaluations = {
         "model": evaluate(test, model.predict_table(test)),
         "baseline": evaluate(test, baseline_results(test)),
+        "baseline_fitted": evaluate(test, fitted.predict_table(test)),
     }
 
     mlflow.log_params(
@@ -105,6 +111,11 @@ def run_experiment(
             "baseline_version": IncomeMultipleBaseline.version,
             "baseline_card_code": BASELINE_CODE[ProductFamily.CREDIT_CARD.value],
             "quantiles": model.quantiles,
+            "baseline_fitted_version": fitted.version,
+            **{
+                f"baseline_fitted_multiple_{family.lower().replace(' ', '_')}": mid
+                for family, (_, mid, _) in fitted.multiples.items()
+            },
         }
     )
     for name, ev in evaluations.items():
