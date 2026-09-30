@@ -20,6 +20,13 @@ CREDIT_TABLES = (
     "marketing_campaigns",
     "campaign_sends",
 )
+# Tablas de llamadas para el clasificador de intención. Fuera del default:
+# solo se listan o descargan si se piden con --tables.
+CONTACT_TABLES = (
+    "call_center_interactions",
+    "call_transcripts",
+)
+ALLOWED_TABLES = CREDIT_TABLES + CONTACT_TABLES
 
 
 class Settings(BaseSettings):

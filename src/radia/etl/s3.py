@@ -1,7 +1,8 @@
 """Único punto de acceso al bucket de Factored.
 
 Reglas (ver [[propuesta]] y `.claude/rules/git.md`, checkpoints):
-- Solo las tablas de crédito (`CREDIT_TABLES`), nunca el bucket completo.
+- Solo las tablas de crédito (`CREDIT_TABLES`) y, si se piden, las de llamadas
+  (`CONTACT_TABLES`). Nunca el bucket completo.
 - Primero un manifiesto con LIST (claves, tamaños, ETags). Pablo lo aprueba.
 - Cada objeto se descarga una sola vez a `data/local/raw/`. Un objeto ya local
   con el mismo ETag no se vuelve a pedir. Así los re-sync solo traen datos
