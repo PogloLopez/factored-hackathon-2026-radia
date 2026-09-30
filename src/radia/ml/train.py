@@ -103,6 +103,7 @@ def run_experiment(
             "n_test_dropped_no_income": n_test_no_income,
             "model_version": model.version,
             "baseline_version": IncomeMultipleBaseline.version,
+            "baseline_card_code": BASELINE_CODE[ProductFamily.CREDIT_CARD.value],
             "quantiles": model.quantiles,
         }
     )
