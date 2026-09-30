@@ -9,7 +9,8 @@ from radia.contracts.common import ProductCode
 from radia.contracts.data.gold_features import make_gold_features
 from radia.contracts.data.gold_labels import make_limit_labels
 from radia.ml.baseline import MULTIPLES, RANGE, IncomeMultipleBaseline
-from radia.ml.dataset import TARGET, build_training_table, split_by_customer
+from radia.ml.dataset import GROUP, TARGET, build_training_table, split_by_customer
+from radia.ml.fitted_baseline import FittedIncomeMultipleBaseline
 from radia.ml.train import (
     BASELINE_CODE,
     GROUPS,
@@ -193,3 +194,47 @@ def test_run_experiment_registra_tarjeta_del_baseline(mocks):
     run, _, _ = _run(*mocks)
     params = mlflow.get_run(run.info.run_id).data.params
     assert params["baseline_card_code"] == "CC_GOLD"
+
+
+def test_run_experiment_registra_params_del_baseline_ajustado(mocks):
+    run, _, _ = _run(*mocks)
+    params = mlflow.get_run(run.info.run_id).data.params
+    assert params["baseline_fitted_version"] == FittedIncomeMultipleBaseline.version
+    familias = {
+        k.removeprefix("baseline_fitted_multiple_")
+        for k in params
+        if k.startswith("baseline_fitted_multiple_")
+    }
+    assert familias == {"credit_card", "personal_loan", "mortgage"}
+    for familia in familias:
+        assert float(params[f"baseline_fitted_multiple_{familia}"]) > 0
+
+
+def test_run_experiment_registra_metricas_del_baseline_ajustado(mocks):
+    run, _, ev = _run(*mocks)
+    metrics = mlflow.get_run(run.info.run_id).data.metrics
+    claves = {k for k in metrics if k.startswith("baseline_fitted_")}
+    assert claves == {f"baseline_fitted_{k}" for k in ev["baseline_fitted"].overall}
+    assert claves
+
+
+def test_baseline_ajustado_se_ajusta_solo_con_train(mocks, monkeypatch):
+    features, labels = mocks
+    capturadas = []
+    fit_original = FittedIncomeMultipleBaseline.fit
+
+    def fit_espia(self, table):
+        capturadas.append(table.copy())
+        return fit_original(self, table)
+
+    monkeypatch.setattr(FittedIncomeMultipleBaseline, "fit", fit_espia)
+    _run(features, labels, seed=4, test_size=0.25)
+    assert len(capturadas) == 1
+    table = build_training_table(features, labels)
+    train, test = split_by_customer(table, test_size=0.25, seed=4)
+    ajustada = capturadas[0]
+    clientes_test = set(test[GROUP])
+    assert clientes_test
+    assert not set(ajustada[GROUP]) & clientes_test
+    assert set(ajustada.index) <= set(train.index)
+    assert (ajustada["monthly_income_usd"] > 0).all()
