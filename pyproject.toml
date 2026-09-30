@@ -23,6 +23,7 @@ dependencies = [
 
 [project.scripts]
 radia-etl = "radia.etl.cli:app"
+radia-ml = "radia.ml.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.8.14,<0.9"]
