@@ -54,6 +54,10 @@ class TableSpec(BaseModel):
             raise ValueError(
                 f"{self.name}: value_map usa columnas fuera de la spec {unknown}"
             )
+        # Un mapa vacío arma `IN ()` y un CASE sin WHEN: SQL inválido en Silver.
+        empty = sorted(c for c, mapping in self.value_map.items() if not mapping)
+        if empty:
+            raise ValueError(f"{self.name}: value_map vacío en {empty}")
         return self
 
 
