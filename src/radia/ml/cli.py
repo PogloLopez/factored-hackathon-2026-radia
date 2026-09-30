@@ -5,7 +5,7 @@ from typing import Annotated
 import mlflow
 import typer
 
-from radia.config import get_settings
+from radia.config import Settings, get_settings
 from radia.contracts.data.gold_features import make_gold_features
 from radia.contracts.data.gold_labels import make_limit_labels
 from radia.etl.gold import gold_path
@@ -15,6 +15,26 @@ from radia.ml.train import run_experiment
 app = typer.Typer(no_args_is_help=True, help="Modelos de Radia.")
 
 EXPERIMENT = "limit-model"
+
+
+def _use_experiment(settings: Settings, tracking_uri: str | None, name: str) -> None:
+    """Tracking en data/local y experimento activo, creado con artefactos locales."""
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    mlflow.set_tracking_uri(
+        tracking_uri or f"sqlite:///{(settings.data_dir / 'mlflow.db').as_posix()}"
+    )
+    # Los artefactos van a data/local (no versionado), no a ./mlruns del repo.
+    experiment = mlflow.get_experiment_by_name(name)
+    # MLflow borra en suave: el experimento sigue existiendo y no se puede usar.
+    if experiment is not None and experiment.lifecycle_stage == "deleted":
+        raise typer.BadParameter(
+            f"el experimento {name} está borrado en MLflow. Restáuralo con "
+            f"`uv run mlflow experiments restore -x {experiment.experiment_id}`"
+        )
+    if experiment is None:
+        artifacts = (settings.data_dir / "mlartifacts").resolve()
+        mlflow.create_experiment(name, artifact_location=artifacts.as_uri())
+    mlflow.set_experiment(name)
 
 
 @app.callback()
@@ -58,22 +78,7 @@ def train(
         labels = read_parquet(paths["limit_labels"])
         source = "gold"
 
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    mlflow.set_tracking_uri(
-        tracking_uri or f"sqlite:///{(settings.data_dir / 'mlflow.db').as_posix()}"
-    )
-    # Los artefactos van a data/local (no versionado), no a ./mlruns del repo.
-    experiment = mlflow.get_experiment_by_name(EXPERIMENT)
-    # MLflow borra en suave: el experimento sigue existiendo y no se puede usar.
-    if experiment is not None and experiment.lifecycle_stage == "deleted":
-        raise typer.BadParameter(
-            f"el experimento {EXPERIMENT} está borrado en MLflow. Restáuralo con "
-            f"`uv run mlflow experiments restore -x {experiment.experiment_id}`"
-        )
-    if experiment is None:
-        artifacts = (settings.data_dir / "mlartifacts").resolve()
-        mlflow.create_experiment(EXPERIMENT, artifact_location=artifacts.as_uri())
-    mlflow.set_experiment(EXPERIMENT)
+    _use_experiment(settings, tracking_uri, EXPERIMENT)
     with mlflow.start_run(run_name=f"{source}-seed{seed}") as run:
         _, evaluations = run_experiment(
             features, labels, seed=seed, test_size=test_size, data_source=source
