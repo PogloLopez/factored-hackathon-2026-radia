@@ -235,8 +235,8 @@ def run_intent_experiment(
         "baseline_keywords": KeywordBaseline(),
     }
     evaluations = {
-        name: evaluate_intent(test, sys.fit(train).predict(test[TEXT]), labels)
-        for name, sys in systems.items()
+        name: evaluate_intent(test, system.fit(train).predict(test[TEXT]), labels)
+        for name, system in systems.items()
     }
     mlflow.log_params(
         {
@@ -247,7 +247,7 @@ def run_intent_experiment(
             "n_test": len(test),
             "n_classes": len(labels),
             "classes": labels,
-            **{f"{name}_version": sys.version for name, sys in systems.items()},
+            **{f"{name}_version": system.version for name, system in systems.items()},
         }
     )
     for name, ev in evaluations.items():
