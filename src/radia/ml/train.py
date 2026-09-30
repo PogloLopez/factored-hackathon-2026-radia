@@ -86,6 +86,11 @@ def run_experiment(
     test = test[test["monthly_income_usd"] > 0]
     if train.empty:
         raise ValueError("el train no tiene productos con ingreso > 0")
+    # El split es por cliente y no garantiza cada familia en train. Una familia
+    # que solo está en test no se aprendió: sale de la evaluación de todos.
+    seen = test["product_family"].isin(set(train["product_family"]))
+    n_test_unseen_family = int((~seen).sum())
+    test = test[seen]
     if test.empty:
         raise ValueError("el test no tiene productos con ingreso > 0")
 
@@ -107,6 +112,7 @@ def run_experiment(
             "n_test": len(test),
             "n_train_dropped_no_income": n_train_no_income,
             "n_test_dropped_no_income": n_test_no_income,
+            "n_test_dropped_unseen_family": n_test_unseen_family,
             "model_version": model.version,
             "baseline_version": IncomeMultipleBaseline.version,
             "baseline_card_code": BASELINE_CODE[ProductFamily.CREDIT_CARD.value],
