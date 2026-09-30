@@ -238,3 +238,23 @@ def test_baseline_ajustado_se_ajusta_solo_con_train(mocks, monkeypatch):
     assert not set(ajustada[GROUP]) & clientes_test
     assert set(ajustada.index) <= set(train.index)
     assert (ajustada["monthly_income_usd"] > 0).all()
+
+
+def test_familia_solo_en_test_sale_de_la_evaluacion(mocks):
+    features, labels = mocks
+    labels = labels.copy()
+    # Hipotecas solo para clientes que el split manda a test.
+    _, test = split_by_customer(build_training_table(features, labels), seed=0)
+    en_test = labels["customer_id"].isin(set(test[GROUP]))
+    labels["product_family"] = labels["product_family"].where(
+        labels["product_family"] != "Mortgage", "Credit Card"
+    )
+    labels.loc[en_test & (labels.index % 3 == 0), "product_family"] = "Mortgage"
+
+    run, _, evaluations = _run(features, labels, seed=0)
+    params = mlflow.get_run(run.info.run_id).data.params
+    assert int(params["n_test_dropped_unseen_family"]) > 0
+    assert "Mortgage" not in evaluations["model"].by_group["product_family"].index
+    assert (
+        evaluations["model"].overall["n"] == evaluations["baseline_fitted"].overall["n"]
+    )
