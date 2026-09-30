@@ -45,7 +45,8 @@ uv run radia-ml train --seed 1 --test-size 0.25
 Componente de ML propuesto porque el cupo y la mora no tienen señal. Del texto del cliente al motivo del contacto.
 
 ```bash
-uv run radia-etl download <manifiesto de llamadas> --approved   # checkpoint de Pablo
+uv run radia-etl manifest --tables call_center_interactions,call_transcripts   # solo LIST; Pablo lo aprueba
+uv run radia-etl download <manifiesto generado> --approved
 uv run radia-etl bronze --tables call_center_interactions,call_transcripts
 uv run radia-etl silver --tables call_center_interactions,call_transcripts
 uv run radia-ml intent              # --mock para probar el código
