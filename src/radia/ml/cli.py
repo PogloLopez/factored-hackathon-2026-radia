@@ -60,6 +60,10 @@ def train(
     mlflow.set_tracking_uri(
         tracking_uri or f"sqlite:///{(settings.data_dir / 'mlflow.db').as_posix()}"
     )
+    # Los artefactos van a data/local (no versionado), no a ./mlruns del repo.
+    if mlflow.get_experiment_by_name(EXPERIMENT) is None:
+        artifacts = (settings.data_dir / "mlartifacts").resolve()
+        mlflow.create_experiment(EXPERIMENT, artifact_location=artifacts.as_uri())
     mlflow.set_experiment(EXPERIMENT)
     with mlflow.start_run(run_name=f"{source}-seed{seed}") as run:
         _, evaluations = run_experiment(
