@@ -50,7 +50,12 @@ class FittedIncomeMultipleBaseline:
         return self
 
     def predict_table(self, table: pd.DataFrame) -> pd.DataFrame:
-        """`lower`, `pred` y `upper` en USD, en el orden de `table`."""
+        """`lower`, `pred` y `upper` en USD, en el orden de `table`.
+
+        Una familia sin filas en train falla a propósito: no hay múltiplo que
+        comparar. Con ingreso 0 o nulo da 0 o NaN: el llamador filtra antes, como
+        `train.py` y `predict`.
+        """
         if not self.multiples:
             raise RuntimeError("el baseline no está ajustado")
         family = table["product_family"].astype(str)
