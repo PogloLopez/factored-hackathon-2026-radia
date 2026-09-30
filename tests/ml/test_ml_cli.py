@@ -1,5 +1,7 @@
 """Tests de la CLI de ML. Settings apuntan a tmp_path; MLflow usa sqlite temporal."""
 
+import re
+
 import pytest
 from typer.testing import CliRunner
 
@@ -11,6 +13,16 @@ from radia.etl.offers import write_parquet
 from radia.ml import cli
 
 runner = CliRunner()
+
+# En GitHub Actions Typer colorea (ANSI) y enmarca los errores en un recuadro
+# que parte el texto al ancho de la terminal. Se compara sin nada de eso.
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_NOISE = re.compile(r"[\s│─╭╮╰╯|+]")
+
+
+def _contains(output: str, text: str) -> bool:
+    plain = _NOISE.sub("", _ANSI.sub("", output))
+    return _NOISE.sub("", text) in plain
 
 
 @pytest.fixture
@@ -39,7 +51,7 @@ def test_train_mock_imprime_modelo_baseline_y_aviso(settings, tmp_path):
 def test_train_sin_gold_falla_y_sugiere_radia_etl_gold(settings, tmp_path):
     result = runner.invoke(cli.app, ["train", "--tracking-uri", _uri(tmp_path)])
     assert result.exit_code != 0
-    assert "radia-etl gold" in " ".join(result.output.split())
+    assert _contains(result.output, "radia-etl gold")
     assert not (tmp_path / "mlflow.db").exists()
 
 
@@ -48,7 +60,7 @@ def test_train_con_gold_parcial_falla(settings, tmp_path):
     write_parquet(features, gold_path(settings, "customer_features"))
     result = runner.invoke(cli.app, ["train", "--tracking-uri", _uri(tmp_path)])
     assert result.exit_code != 0
-    assert "limit_labels" in " ".join(result.output.split())
+    assert _contains(result.output, "limit_labels")
 
 
 def test_train_con_gold_usa_data_source_gold(settings, tmp_path):
@@ -78,7 +90,7 @@ def test_train_rechaza_test_size_fuera_de_rango(settings, tmp_path, size):
         ["train", "--mock", "--test-size", size, "--tracking-uri", _uri(tmp_path)],
     )
     assert result.exit_code != 0
-    assert "test-size" in " ".join(result.output.split())
+    assert _contains(result.output, "test-size")
 
 
 def test_train_guarda_artefactos_en_data_dir(settings, tmp_path):
@@ -104,4 +116,4 @@ def test_train_con_experimento_borrado_explica_como_restaurar(settings, tmp_path
     )
     result = runner.invoke(cli.app, ["train", "--mock", "--tracking-uri", uri])
     assert result.exit_code != 0
-    assert "restore" in " ".join(result.output.split())
+    assert _contains(result.output, "restore")
