@@ -79,7 +79,7 @@ def test_tabla_descarta_texto_vacio_o_nulo_y_etiqueta_nula():
 def test_tabla_acento_faltante_es_unknown():
     inter, trans = _crudo(["uno", "dos"], ["A", "B"], ["Mexican", None])
     tabla = build_intent_table(inter, trans)
-    assert list(tabla["accent"]) == ["Mexican", "unknown"]
+    assert list(tabla["accent"]) == ["mexican", "unknown"]
 
 
 def test_tabla_recorta_espacios_del_texto():
