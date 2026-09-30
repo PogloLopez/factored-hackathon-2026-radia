@@ -10,7 +10,9 @@ from radia.contracts.data.gold_features import make_gold_features
 from radia.contracts.data.gold_labels import make_limit_labels
 from radia.etl.gold import gold_path
 from radia.etl.offers import write_parquet
+from radia.etl.silver import silver_path
 from radia.ml import cli
+from radia.ml.intent import make_mock_calls
 
 runner = CliRunner()
 
@@ -117,3 +119,46 @@ def test_train_con_experimento_borrado_explica_como_restaurar(settings, tmp_path
     result = runner.invoke(cli.app, ["train", "--mock", "--tracking-uri", uri])
     assert result.exit_code != 0
     assert _contains(result.output, "restore")
+
+
+# --- intent ---
+
+
+def test_intent_mock_imprime_tres_lineas_y_aviso(settings, tmp_path):
+    result = runner.invoke(
+        cli.app, ["intent", "--mock", "--tracking-uri", _uri(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    lineas = result.output.splitlines()
+    for nombre in ("model ", "baseline_majority", "baseline_keywords"):
+        assert any(line.startswith(nombre) for line in lineas), result.output
+    assert "(mock)" in result.output
+    assert "Aviso: datos mock" in result.output
+
+
+def test_intent_sin_silver_falla_y_sugiere_radia_etl_silver(settings, tmp_path):
+    result = runner.invoke(cli.app, ["intent", "--tracking-uri", _uri(tmp_path)])
+    assert result.exit_code != 0
+    assert _contains(result.output, "radia-etl silver")
+    assert not (tmp_path / "mlflow.db").exists()
+
+
+def test_intent_con_silver_usa_data_source_silver(settings, tmp_path):
+    inter, trans = make_mock_calls(n=800, seed=0)
+    write_parquet(inter, silver_path(settings, "call_center_interactions"))
+    write_parquet(trans, silver_path(settings, "call_transcripts"))
+    result = runner.invoke(cli.app, ["intent", "--tracking-uri", _uri(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "(silver)" in result.output
+    assert "Aviso: datos mock" not in result.output
+    assert (tmp_path / "mlflow.db").exists()
+
+
+@pytest.mark.parametrize("size", ["0", "1", "1.5", "-0.2"])
+def test_intent_rechaza_test_size_fuera_de_rango(settings, tmp_path, size):
+    result = runner.invoke(
+        cli.app,
+        ["intent", "--mock", "--test-size", size, "--tracking-uri", _uri(tmp_path)],
+    )
+    assert result.exit_code != 0
+    assert _contains(result.output, "test-size")
