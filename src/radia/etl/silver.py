@@ -1,7 +1,8 @@
 """Capa Silver: tipos, limpieza y deduplicación desde Bronze.
 
 Pasos por tabla:
-1. `TRIM` a todo y `''` a NULL.
+1. `TRIM` a todo y `''` a NULL. Luego `value_map` de la spec traduce valores
+   reales al vocabulario de los contratos (p. ej. `México` a `Mexico`).
 2. `TRY_CAST` al tipo de la spec. Un valor que no castea queda NULL y se cuenta.
 3. Filas sin PK completa se descartan.
 4. Duplicados exactos (mismas columnas de la spec) se reducen a una fila.
@@ -86,6 +87,12 @@ def build_silver(
         c: f"NULLIF(TRIM({ident(c)}), '')" if c in bronze_cols else "NULL::VARCHAR"
         for c in spec.columns
     }
+    for c, mapping in spec.value_map.items():
+        cases = " ".join(
+            f"WHEN {sql_literal(src)} THEN {sql_literal(dst)}"
+            for src, dst in mapping.items()
+        )
+        raw[c] = f"CASE {raw[c]} {cases} ELSE {raw[c]} END"
     typed = {
         c: raw[c] if t == "VARCHAR" else f"TRY_CAST({raw[c]} AS {t})"
         for c, t in spec.columns.items()

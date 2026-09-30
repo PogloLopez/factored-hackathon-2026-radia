@@ -29,6 +29,9 @@ class TableSpec(BaseModel):
     order_by: str | None
     columns: dict[str, str]
     foreign_keys: tuple[ForeignKey, ...] = ()
+    # Traducción de valores reales al vocabulario de los contratos, por columna.
+    # Un valor que no está en el mapa pasa tal cual.
+    value_map: dict[str, dict[str, str]] = {}
 
 
 CUSTOMERS = TableSpec(
@@ -65,6 +68,8 @@ CUSTOMERS = TableSpec(
         "last_updated": "TIMESTAMP",
         "accepts_marketing": "BOOLEAN",
     },
+    # Los datos reales traen el país con tilde (verificado 2026-09-30).
+    value_map={"country": {"México": "Mexico"}},
 )
 
 PRODUCTS = TableSpec(
@@ -96,6 +101,16 @@ PRODUCTS = TableSpec(
             column="customer_id", ref_table="customers", ref_column="customer_id"
         ),
     ),
+    # Los datos reales traen el tipo en español (verificado 2026-09-30). Solo se
+    # traducen las familias de crédito; cuentas, débito, seguros e inversión no
+    # entran al workflow y quedan tal cual.
+    value_map={
+        "product_type": {
+            "Tarjeta Crédito": "Credit Card",
+            "Préstamo Personal": "Personal Loan",
+            "Préstamo Hipotecario": "Mortgage",
+        }
+    },
 )
 
 TRANSACTIONS = TableSpec(
