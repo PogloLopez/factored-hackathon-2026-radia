@@ -1,8 +1,9 @@
 """Entrena el modelo de cupo y lo compara con el baseline sobre el mismo test.
 
 - Split por cliente (`split_by_customer`). El test no se usa para ajustar nada.
-- Modelo y baseline se evalúan sobre las mismas filas: productos cuyo dueño
-  tiene ingreso > 0. Sin ingreso ninguno de los dos predice (C4).
+- Modelo y baseline se entrenan y evalúan solo con productos cuyo dueño tiene
+  ingreso > 0. Sin ingreso ninguno de los dos predice (C4). Las filas
+  descartadas se registran.
 - Métricas globales y por país, segmento y familia (fairness). Se registran en
   MLflow con los parámetros del experimento.
 - Con datos mock el código corre, pero las métricas no significan nada.
@@ -74,7 +75,14 @@ def run_experiment(
         raise RuntimeError("se exige un run activo: usar `with mlflow.start_run()`")
     table = build_training_table(features, labels)
     train, test = split_by_customer(table, test_size=test_size, seed=seed)
+    # Sin ingreso no se predice (C4): esas filas salen de train y de test, y se
+    # registra cuántas para no ocultar el sesgo de selección.
+    n_train_no_income = int((~(train["monthly_income_usd"] > 0)).sum())
+    n_test_no_income = int((~(test["monthly_income_usd"] > 0)).sum())
+    train = train[train["monthly_income_usd"] > 0]
     test = test[test["monthly_income_usd"] > 0]
+    if train.empty:
+        raise ValueError("el train no tiene productos con ingreso > 0")
     if test.empty:
         raise ValueError("el test no tiene productos con ingreso > 0")
 
@@ -91,6 +99,8 @@ def run_experiment(
             "test_size": test_size,
             "n_train": len(train),
             "n_test": len(test),
+            "n_train_dropped_no_income": n_train_no_income,
+            "n_test_dropped_no_income": n_test_no_income,
             "model_version": model.version,
             "baseline_version": IncomeMultipleBaseline.version,
             "quantiles": model.quantiles,
