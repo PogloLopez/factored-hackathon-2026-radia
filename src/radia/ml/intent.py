@@ -49,7 +49,8 @@ def build_intent_table(
     table[TEXT] = table[TEXT].astype("string").str.strip()
     table = table[table[TEXT].fillna("").str.len() > 0]
     table = table[table[LABEL].notna()]
-    table["accent"] = table["accent"].fillna("unknown")
+    # El diccionario trae el acento en minúsculas; se normaliza por si acaso.
+    table["accent"] = table["accent"].astype("string").str.lower().fillna("unknown")
     return table.reset_index(drop=True)
 
 
