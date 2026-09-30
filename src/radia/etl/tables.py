@@ -193,10 +193,88 @@ DAILY_EXCHANGE_RATES = TableSpec(
     },
 )
 
+CALL_CENTER_INTERACTIONS = TableSpec(
+    name="call_center_interactions",
+    source="data/call_center_interactions/**/*.csv",
+    primary_key=("interaction_id",),
+    order_by="process_date",
+    columns={
+        "interaction_id": "VARCHAR",
+        "interaction_date": "TIMESTAMP",
+        "process_date": "DATE",
+        "customer_id": "VARCHAR",
+        "agent_id": "VARCHAR",
+        "interaction_type": "VARCHAR",
+        "channel": "VARCHAR",
+        "contact_reason": "VARCHAR",
+        "reason_category": "VARCHAR",
+        "duration_seconds": "INTEGER",
+        "wait_time_seconds": "INTEGER",
+        "was_resolved": "BOOLEAN",
+        "requires_followup": "BOOLEAN",
+        "detected_sentiment": "VARCHAR",
+        "sentiment_score": "DECIMAL(3,2)",
+        "customer_detected_accent": "VARCHAR",
+        "agent_used_accent": "VARCHAR",
+        "was_escalated": "BOOLEAN",
+        "mentioned_products": "VARCHAR",
+        "has_transcript": "BOOLEAN",
+        "has_recording": "BOOLEAN",
+    },
+    foreign_keys=(
+        ForeignKey(
+            column="customer_id", ref_table="customers", ref_column="customer_id"
+        ),
+    ),
+)
+
+CALL_TRANSCRIPTS = TableSpec(
+    name="call_transcripts",
+    source="data/call_transcripts/**/*.csv",
+    primary_key=("transcript_id",),
+    order_by="process_date",
+    columns={
+        "transcript_id": "VARCHAR",
+        "interaction_id": "VARCHAR",
+        "process_date": "DATE",
+        "customer_id": "VARCHAR",
+        "agent_id": "VARCHAR",
+        "full_text": "VARCHAR",
+        "customer_text": "VARCHAR",
+        "agent_text": "VARCHAR",
+        "detected_language": "VARCHAR",
+        "detected_accent": "VARCHAR",
+        "accent_confidence": "DECIMAL(3,2)",
+        "detected_keywords": "VARCHAR",
+        "mentioned_entities": "VARCHAR",
+        "detected_intents": "VARCHAR",
+        "main_topics": "VARCHAR",
+        "transcription_model": "VARCHAR",
+        "audio_quality": "VARCHAR",
+        "duration_seconds": "INTEGER",
+    },
+    foreign_keys=(
+        ForeignKey(
+            column="customer_id", ref_table="customers", ref_column="customer_id"
+        ),
+        ForeignKey(
+            column="interaction_id",
+            ref_table="call_center_interactions",
+            ref_column="interaction_id",
+        ),
+    ),
+)
+
 # Orden de construcción: dimensiones antes que hechos, para medir huérfanos.
 TABLES: dict[str, TableSpec] = {
     t.name: t for t in (CUSTOMERS, PRODUCTS, DAILY_EXCHANGE_RATES, TRANSACTIONS)
 }
+# Tablas de contacto (clasificador de intención). No entran al default: solo se
+# construyen si se piden con --tables, así nadie necesita descargarlas.
+CONTACT_TABLES: dict[str, TableSpec] = {
+    t.name: t for t in (CALL_CENTER_INTERACTIONS, CALL_TRANSCRIPTS)
+}
+ALL_TABLES: dict[str, TableSpec] = TABLES | CONTACT_TABLES
 
 
 def select_tables(names: str | None) -> list[TableSpec]:
@@ -204,7 +282,7 @@ def select_tables(names: str | None) -> list[TableSpec]:
     if not names:
         return list(TABLES.values())
     wanted = {n.strip() for n in names.split(",") if n.strip()}
-    unknown = wanted - TABLES.keys()
+    unknown = wanted - ALL_TABLES.keys()
     if unknown:
         raise ValueError(f"tablas sin spec de Bronze/Silver: {sorted(unknown)}")
-    return [t for t in TABLES.values() if t.name in wanted]
+    return [t for t in ALL_TABLES.values() if t.name in wanted]
