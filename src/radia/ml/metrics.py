@@ -10,6 +10,7 @@ por producto de test. Ver sección 5 de [[propuesta]].
 - Ancho del rango relativo a la predicción: un rango enorme cubre todo y no sirve.
 """
 
+import numpy as np
 import pandas as pd
 
 COLUMNS = ("y_true", "pred", "lower", "upper")
@@ -22,9 +23,13 @@ def _check(results: pd.DataFrame) -> None:
         raise ValueError(f"faltan columnas: {sorted(missing)}")
     if results.empty:
         raise ValueError("sin filas para evaluar")
-    cols = results[list(COLUMNS)]
-    if cols.isna().any().any():
-        raise ValueError("hay nulos en y_true, pred, lower o upper")
+    try:
+        cols = results[list(COLUMNS)].apply(pd.to_numeric).astype("float64")
+    except (TypeError, ValueError) as err:
+        raise ValueError("y_true, pred, lower y upper deben ser numéricas") from err
+    # isfinite cubre nulos e infinitos: los dos sesgan las métricas.
+    if not np.isfinite(cols.to_numpy()).all():
+        raise ValueError("hay nulos o infinitos en y_true, pred, lower o upper")
     # Cupos en 0 harían infinito el error porcentual y el ancho relativo.
     if not ((cols["y_true"] > 0) & (cols["pred"] > 0)).all():
         raise ValueError("y_true y pred deben ser > 0")
