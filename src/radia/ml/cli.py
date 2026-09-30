@@ -80,7 +80,7 @@ def train(
         )
     for name, ev in evaluations.items():
         shown = ", ".join(f"{k}={v:,.3f}" for k, v in ev.overall.items())
-        typer.echo(f"{name:9} {shown}")
+        typer.echo(f"{name:15} {shown}")
     typer.echo(f"Run MLflow: {run.info.run_id} ({source})")
     if mock:
         typer.echo("Aviso: datos mock. Estas métricas no se reportan.")
