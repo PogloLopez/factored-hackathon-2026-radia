@@ -37,6 +37,10 @@ class FittedIncomeMultipleBaseline:
         rows = table[table["monthly_income_usd"] > 0]
         if rows.empty:
             raise ValueError("sin filas con ingreso > 0 para ajustar el baseline")
+        # Un cupo 0 deja múltiplos en 0 y LimitPrediction (gt=0) falla después.
+        limits = rows[TARGET].to_numpy(dtype="float64")
+        if not (np.isfinite(limits) & (limits > 0)).all():
+            raise ValueError("se exigen cupos finitos y > 0")
         ratio = rows[TARGET] / rows["monthly_income_usd"]
         by_family = ratio.groupby(rows["product_family"].astype(str), observed=True)
         self.multiples = {
