@@ -69,3 +69,10 @@ def test_value_map_claves_nfd_quedan_en_nfc():
     assert nfd != "México"
     spec = _spec_con_value_map({"country": {nfd: "Mexico"}})
     assert list(spec.value_map["country"]) == ["México"]
+
+
+def test_value_map_vacio_falla_nombrando_la_columna():
+    with pytest.raises(ValidationError, match="country"):
+        TableSpec.model_validate(
+            TABLES["customers"].model_dump() | {"value_map": {"country": {}}}
+        )
