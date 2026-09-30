@@ -175,3 +175,17 @@ def test_run_experiment_sin_run_activo_falla(mocks):
     with pytest.raises(RuntimeError, match="run activo"):
         run_experiment(*mocks)
     assert mlflow.active_run() is None
+
+
+def test_train_descarta_sin_ingreso_y_registra_descartes(mocks):
+    features, labels = mocks
+    features = features.copy()
+    features.loc[features.index[:40], "monthly_income_usd"] = 0.0
+    run, _, _ = _run(features, labels)
+    params = mlflow.get_run(run.info.run_id).data.params
+    dropped = int(params["n_train_dropped_no_income"]) + int(
+        params["n_test_dropped_no_income"]
+    )
+    assert dropped > 0
+    total = build_training_table(features, labels)
+    assert int(params["n_train"]) + int(params["n_test"]) + dropped == len(total)
