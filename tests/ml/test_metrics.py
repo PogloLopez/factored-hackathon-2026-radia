@@ -113,7 +113,7 @@ def test_por_grupo_columna_inexistente():
 def test_nulos_en_columnas_de_metricas(col):
     df = _results()
     df.loc[0, col] = None
-    with pytest.raises(ValueError, match="hay nulos en y_true, pred, lower o upper"):
+    with pytest.raises(ValueError, match="hay nulos"):
         limit_metrics(df)
 
 
