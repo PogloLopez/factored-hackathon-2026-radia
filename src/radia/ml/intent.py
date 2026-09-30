@@ -101,10 +101,14 @@ class KeywordBaseline:
     def __init__(self, k: int = 20) -> None:
         self.k = k
 
-    @staticmethod
-    def _tokens(text: str) -> set[str]:
-        vec = TfidfVectorizer(strip_accents="unicode", lowercase=True)
-        return set(vec.build_analyzer()(text))
+    # Un solo analizador, mismas reglas que el TF-IDF del modelo.
+    _analyzer = staticmethod(
+        TfidfVectorizer(strip_accents="unicode", lowercase=True).build_analyzer()
+    )
+
+    @classmethod
+    def _tokens(cls, text: object) -> set[str]:
+        return set(cls._analyzer(text)) if isinstance(text, str) else set()
 
     def fit(self, table: pd.DataFrame) -> Self:
         by_class: dict[str, Counter[str]] = {}
