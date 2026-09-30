@@ -4,7 +4,9 @@ Tipos DuckDB tomados de [[latam_bank_complete_data_dictionary]]. Si los datos
 reales traen otro formato, se ajusta aquí y no en el código de las capas.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ForeignKey(BaseModel):
@@ -32,6 +34,15 @@ class TableSpec(BaseModel):
     # Traducción de valores reales al vocabulario de los contratos, por columna.
     # Un valor que no está en el mapa pasa tal cual.
     value_map: dict[str, dict[str, str]] = {}
+
+    @model_validator(mode="after")
+    def check_value_map(self) -> Self:
+        unknown = sorted(set(self.value_map) - set(self.columns))
+        if unknown:
+            raise ValueError(
+                f"{self.name}: value_map usa columnas fuera de la spec {unknown}"
+            )
+        return self
 
 
 CUSTOMERS = TableSpec(
