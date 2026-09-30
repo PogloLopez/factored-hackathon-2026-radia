@@ -5,8 +5,15 @@ import unicodedata
 import pytest
 from pydantic import ValidationError
 
+from radia.config import CREDIT_TABLES
 from radia.contracts.common import Country, ProductFamily, values
-from radia.etl.tables import TABLES, TableSpec, select_tables
+from radia.etl.tables import (
+    ALL_TABLES,
+    CONTACT_TABLES,
+    TABLES,
+    TableSpec,
+    select_tables,
+)
 
 
 def test_specs_consistentes():
@@ -76,3 +83,54 @@ def test_value_map_vacio_falla_nombrando_la_columna():
         TableSpec.model_validate(
             TABLES["customers"].model_dump() | {"value_map": {"country": {}}}
         )
+
+
+def test_default_devuelve_solo_las_tablas_de_credito():
+    names = [t.name for t in select_tables(None)]
+    assert names == list(TABLES)
+    assert len(names) == 4
+    assert not set(names) & CONTACT_TABLES.keys()
+
+
+def test_select_tables_llamadas_en_orden_de_construccion():
+    names = [t.name for t in select_tables("call_transcripts,call_center_interactions")]
+    assert names == ["call_center_interactions", "call_transcripts"]
+
+
+def test_select_tables_mezcla_credito_y_llamadas():
+    names = [t.name for t in select_tables("call_transcripts, customers")]
+    assert names == ["customers", "call_transcripts"]
+
+
+def test_specs_de_llamadas_pk_y_fk():
+    inter = ALL_TABLES["call_center_interactions"]
+    trans = ALL_TABLES["call_transcripts"]
+    assert inter.primary_key == ("interaction_id",)
+    assert trans.primary_key == ("transcript_id",)
+    assert {(f.column, f.ref_table, f.ref_column) for f in inter.foreign_keys} == {
+        ("customer_id", "customers", "customer_id")
+    }
+    assert {(f.column, f.ref_table, f.ref_column) for f in trans.foreign_keys} == {
+        ("customer_id", "customers", "customer_id"),
+        ("interaction_id", "call_center_interactions", "interaction_id"),
+    }
+
+
+def test_specs_de_llamadas_consistentes_y_contactos_fuera_de_tables():
+    assert set(CONTACT_TABLES) == {"call_center_interactions", "call_transcripts"}
+    assert ALL_TABLES.keys() == TABLES.keys() | CONTACT_TABLES.keys()
+    for spec in CONTACT_TABLES.values():
+        assert set(spec.primary_key) <= spec.columns.keys()
+        assert spec.order_by in spec.columns
+        for fk in spec.foreign_keys:
+            assert fk.column in spec.columns
+            assert fk.ref_column in ALL_TABLES[fk.ref_table].columns
+
+
+def test_tablas_permitidas_de_config_cubren_las_specs():
+    from radia.config import ALLOWED_TABLES
+    from radia.config import CONTACT_TABLES as CFG_CONTACT
+
+    assert tuple(CONTACT_TABLES) == CFG_CONTACT
+    assert ALLOWED_TABLES == CREDIT_TABLES + CFG_CONTACT
+    assert not set(CFG_CONTACT) & set(CREDIT_TABLES)
