@@ -204,3 +204,28 @@ def test_value_map_con_comilla_simple_no_rompe_sql(raw_settings):
     csv = "customer_id,country\nC1,Côte d'Ivoire\nC2,Colombia\n"
     got = _silver_col(raw_settings, spec, csv, "country")
     assert got == ["O'Brien", "Colombia"]
+
+
+def test_value_map_country_en_nfd_tambien_se_traduce(raw_settings):
+    nfd = "México"
+    csv = f"customer_id,country\nC1,{nfd}\nC2,México\nC3,Colombia\n"
+    got = _silver_col(raw_settings, TABLES["customers"], csv, "country")
+    assert got == ["Mexico", "Mexico", "Colombia"]
+
+
+def test_mapped_rows_cuenta_filas_traducidas(raw_settings):
+    spec = TABLES["customers"]
+    csv = "customer_id,country\nC1,México\nC2,Colombia\nC3,México\n"
+    (raw_settings.raw_dir / "data" / f"{spec.name}.csv").write_text(
+        csv, encoding="utf-8"
+    )
+    build_bronze(spec, raw_settings)
+    assert build_silver(spec, raw_settings).mapped_rows == {"country": 2}
+
+
+def test_mapped_rows_vacio_sin_value_map(built):
+    _, reports = built
+    sin_mapa = [n for n in reports if not TABLES[n].value_map]
+    assert sin_mapa
+    for name in sin_mapa:
+        assert reports[name].mapped_rows == {}

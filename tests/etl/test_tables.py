@@ -1,9 +1,12 @@
 """Tests de las specs declarativas de tablas."""
 
+import unicodedata
+
 import pytest
+from pydantic import ValidationError
 
 from radia.contracts.common import Country, ProductFamily, values
-from radia.etl.tables import TABLES, select_tables
+from radia.etl.tables import TABLES, TableSpec, select_tables
 
 
 def test_specs_consistentes():
@@ -49,3 +52,20 @@ def test_value_map_claves_y_destinos_en_el_vocabulario_de_contratos():
     assert set(TABLES["products"].value_map["product_type"].values()) <= set(
         values(ProductFamily)
     )
+
+
+def _spec_con_value_map(value_map):
+    base = TABLES["customers"]
+    return TableSpec.model_validate({**base.model_dump(), "value_map": value_map})
+
+
+def test_value_map_sobre_columna_inexistente_falla_nombrandola():
+    with pytest.raises(ValidationError, match="columna_fantasma"):
+        _spec_con_value_map({"columna_fantasma": {"a": "b"}})
+
+
+def test_value_map_claves_nfd_quedan_en_nfc():
+    nfd = unicodedata.normalize("NFD", "México")
+    assert nfd != "México"
+    spec = _spec_con_value_map({"country": {nfd: "Mexico"}})
+    assert list(spec.value_map["country"]) == ["México"]
