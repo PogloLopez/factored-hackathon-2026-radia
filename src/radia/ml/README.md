@@ -24,13 +24,14 @@ uv run radia-ml train --seed 1 --test-size 0.25
 - `dataset.py`. Une C1 y C2 por `customer_id` y `snapshot_date`. Sin `LIMIT_MODEL_EXCLUDED_FEATURES`. Split por cliente.
 - `limit_model.py`, `QuantileLimitModel`. Tres gradient boosting cuantiles (0.1, 0.5, 0.9) sobre el log del cupo: piso, sugerido y techo. Cumple `LimitModel` (C4).
 - `metrics.py`. MAE, error porcentual (mediana y media), cobertura y ancho del rango. Global y por grupo. Rechaza nulos, infinitos y cupos <= 0.
-- `train.py`. Modelo contra baseline sobre las mismas filas de test. Métricas por país, segmento y familia (fairness).
+- `fitted_baseline.py`, `FittedIncomeMultipleBaseline`. Baseline fuerte: cuantiles de `cupo / ingreso` por familia, ajustados con train. Si el modelo no le gana, las features no aportan más que el ingreso.
+- `train.py`. Modelo contra los dos baselines (fijo y ajustado) sobre las mismas filas de test. Métricas por país, segmento y familia (fairness).
 - Train y test solo con productos cuyo dueño tiene ingreso > 0 (C4). Los descartes se registran.
 
 ### MLflow
 
 - Experimento `limit-model`. Tracking en `data/local/mlflow.db`, artefactos en `data/local/mlartifacts/`. Nada se versiona.
-- Se registran parámetros, métricas `model_*` y `baseline_*`, y un CSV por grupo.
+- Se registran parámetros, métricas `model_*`, `baseline_*` y `baseline_fitted_*`, y un CSV por grupo. El múltiplo mediano aprendido por familia queda en `baseline_fitted_multiple_<familia>`.
 - Ver los runs: `uv run mlflow ui --backend-store-uri sqlite:///data/local/mlflow.db`.
 
 ### Limitaciones
