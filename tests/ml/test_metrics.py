@@ -150,3 +150,34 @@ def test_por_grupo_propaga_validacion_de_entrada():
     df.loc[0, "y_true"] = 0.0
     with pytest.raises(ValueError, match="y_true y pred deben ser > 0"):
         metrics_by_group(df, "country")
+
+
+@pytest.mark.parametrize("col", ["y_true", "pred", "lower", "upper"])
+@pytest.mark.parametrize("bad", [float("inf"), float("-inf")])
+def test_infinitos_en_columnas_de_metricas(col, bad):
+    df = _results()
+    df.loc[0, col] = bad
+    with pytest.raises(ValueError, match="infinitos"):
+        limit_metrics(df)
+
+
+@pytest.mark.parametrize("col", ["y_true", "pred", "lower", "upper"])
+def test_columna_de_texto_no_numerico(col):
+    df = _results().astype({col: "object"})
+    df.loc[0, col] = "abc"
+    with pytest.raises(ValueError, match="numéricas"):
+        limit_metrics(df)
+
+
+def test_numeros_guardados_como_texto_se_convierten():
+    df = _results().astype(str)
+    df.loc[0, "y_true"] = "100"  # entero como texto
+    assert limit_metrics(df) == limit_metrics(_results())
+
+
+def test_columnas_enteras_funcionan():
+    df = _results().astype("int64")
+    m = limit_metrics(df)
+    assert m["n"] == 3.0
+    assert m["mae_usd"] == pytest.approx(20.0)
+    assert m["coverage"] == pytest.approx(2 / 3)
