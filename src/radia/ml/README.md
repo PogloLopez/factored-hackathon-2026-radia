@@ -41,6 +41,25 @@ uv run radia-ml train --seed 1 --test-size 0.25
 - Cobertura nominal del rango: 80 %. Se reporta la real.
 - **Con datos reales (2026-09-30) el cupo no tiene señal.** Correlación ~0 con todas las features. El modelo empata con los cuantiles del cupo por familia, sin mirar al cliente (MAE 17.9k vs 18.1k USD). Los cupos parecen uniformes por familia. La mora > 30 días tampoco: sale al azar con ~9.5 % por producto (AUC del puntaje de buró 0.497).
 
+## Clasificador de intención
+
+Componente de ML propuesto porque el cupo y la mora no tienen señal. Del texto del cliente al motivo del contacto.
+
+```bash
+uv run radia-etl download <manifiesto de llamadas> --approved   # checkpoint de Pablo
+uv run radia-etl bronze --tables call_center_interactions,call_transcripts
+uv run radia-etl silver --tables call_center_interactions,call_transcripts
+uv run radia-ml intent              # --mock para probar el código
+```
+
+- `intent.py`. `customer_text` de `call_transcripts` unido a `reason_category` de `call_center_interactions`. Split por cliente.
+- Modelo: TF-IDF (palabras y bigramas, sin tildes) + regresión logística.
+- Baselines: clase mayoritaria y palabras clave aprendidas de train (log-odds por clase).
+- Métricas: accuracy y F1 macro con las clases de train fijas, global y por acento.
+- MLflow: experimento `intent-classifier`, métricas `model_*`, `baseline_majority_*`, `baseline_keywords_*`.
+- Las tablas de llamadas no entran al default de `radia-etl`: solo con `--tables`.
+- Pendiente: verificar señal con datos reales.
+
 ## Reglas
 
 - Antes de D3 se trabaja con mocks que cumplen el contrato o con EDA directo sobre S3. Las métricas sobre mock no cuentan.
