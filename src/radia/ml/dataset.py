@@ -47,7 +47,9 @@ CATEGORICAL_FEATURES = {
 }
 FEATURES = NUMERIC_FEATURES + tuple(CATEGORICAL_FEATURES)
 
-assert not set(FEATURES) & set(LIMIT_MODEL_EXCLUDED_FEATURES)
+# Explícito y no `assert`: con `python -O` un assert desaparece.
+if set(FEATURES) & set(LIMIT_MODEL_EXCLUDED_FEATURES):
+    raise RuntimeError("FEATURES incluye columnas excluidas por leakage (C1)")
 
 
 def build_training_table(features: pd.DataFrame, labels: pd.DataFrame) -> pd.DataFrame:
