@@ -169,3 +169,9 @@ def test_error_si_ningun_producto_de_test_tiene_ingreso(mocks, ingreso):
     features = features.assign(monthly_income_usd=ingreso)
     with mlflow.start_run(), pytest.raises(ValueError, match="ingreso > 0"):
         run_experiment(features, labels)
+
+
+def test_run_experiment_sin_run_activo_falla(mocks):
+    with pytest.raises(RuntimeError, match="run activo"):
+        run_experiment(*mocks)
+    assert mlflow.active_run() is None
