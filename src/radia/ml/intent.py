@@ -16,12 +16,15 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Self
 
+import mlflow
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.pipeline import Pipeline, make_pipeline
+
+from radia.ml.dataset import split_by_customer
 
 TEXT = "text"
 LABEL = "label"
@@ -207,3 +210,48 @@ def make_mock_calls(n: int = 2000, seed: int = 0) -> tuple[pd.DataFrame, pd.Data
         }
     )
     return interactions, transcripts
+
+
+def run_intent_experiment(
+    interactions: pd.DataFrame,
+    transcripts: pd.DataFrame,
+    *,
+    seed: int = 0,
+    test_size: float = 0.2,
+    data_source: str = "mock",
+) -> dict[str, IntentEvaluation]:
+    """Entrena, evalúa modelo y baselines, y registra todo en el run activo de MLflow."""
+    if mlflow.active_run() is None:
+        raise RuntimeError("se exige un run activo: usar `with mlflow.start_run()`")
+    table = build_intent_table(interactions, transcripts)
+    if table.empty:
+        raise ValueError("sin transcripciones con texto y etiqueta")
+    train, test = split_by_customer(table, test_size=test_size, seed=seed)
+    # Clases de train fijas: una clase ausente en test cuenta como F1 0.
+    labels = sorted(train[LABEL].unique())
+    systems = {
+        "model": IntentModel(seed=seed),
+        "baseline_majority": MajorityBaseline(),
+        "baseline_keywords": KeywordBaseline(),
+    }
+    evaluations = {
+        name: evaluate_intent(test, sys.fit(train).predict(test[TEXT]), labels)
+        for name, sys in systems.items()
+    }
+    mlflow.log_params(
+        {
+            "data_source": data_source,
+            "seed": seed,
+            "test_size": test_size,
+            "n_train": len(train),
+            "n_test": len(test),
+            "n_classes": len(labels),
+            "classes": labels,
+            **{f"{name}_version": sys.version for name, sys in systems.items()},
+        }
+    )
+    for name, ev in evaluations.items():
+        mlflow.log_metrics({f"{name}_{k}": v for k, v in ev.overall.items()})
+        for group, df in ev.by_group.items():
+            mlflow.log_text(df.to_csv(), f"by_group/{name}_{group}.csv")
+    return evaluations
