@@ -1,9 +1,14 @@
 """Tests de radia.ml.dataset."""
 
+import importlib
+import warnings
+
 import pandas as pd
 import pandera.errors as pa_errors
 import pytest
 
+import radia.contracts.data.gold_features as gold_features_module
+import radia.ml.dataset as dataset_module
 from radia.contracts.data.gold_features import (
     LIMIT_MODEL_EXCLUDED_FEATURES,
     make_gold_features,
@@ -116,3 +121,28 @@ def test_split_tabla_vacia_falla(mocks):
     table = build_training_table(*mocks).iloc[0:0]
     with pytest.raises(ValueError):
         split_by_customer(table)
+
+
+def test_matriz_sin_warnings_con_valores_fuera_de_vocabulario(mocks):
+    table = build_training_table(*mocks).head(4).copy()
+    valido = table["country"].iloc[0]
+    table["country"] = ["XX", valido, None, "YY"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        x = to_model_matrix(table)
+    assert x["country"].isna().tolist() == [True, False, True, True]
+    assert x["country"].iloc[1] == valido
+
+
+def test_guarda_de_leakage_lanza_runtime_error(monkeypatch):
+    monkeypatch.setattr(
+        gold_features_module,
+        "LIMIT_MODEL_EXCLUDED_FEATURES",
+        (*LIMIT_MODEL_EXCLUDED_FEATURES, "credit_score"),
+    )
+    try:
+        with pytest.raises(RuntimeError, match="leakage"):
+            importlib.reload(dataset_module)
+    finally:
+        monkeypatch.undo()
+        importlib.reload(dataset_module)
