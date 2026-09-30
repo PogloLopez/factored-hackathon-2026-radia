@@ -72,7 +72,7 @@ def run_experiment(
     test_size: float = 0.2,
     data_source: str = "mock",
 ) -> tuple[QuantileLimitModel, dict[str, Evaluation]]:
-    """Entrena, evalúa modelo y baseline, y registra todo en el run activo de MLflow."""
+    """Entrena, evalúa modelo y baselines, y registra todo en el run activo de MLflow."""
     # Sin run activo, MLflow abriría uno implícito que nadie cierra.
     if mlflow.active_run() is None:
         raise RuntimeError("se exige un run activo: usar `with mlflow.start_run()`")
