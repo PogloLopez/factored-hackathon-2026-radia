@@ -69,3 +69,22 @@ def test_train_sin_tracking_uri_crea_mlflow_db_en_data_dir(settings):
     result = runner.invoke(cli.app, ["train", "--mock"])
     assert result.exit_code == 0, result.output
     assert (settings.data_dir / "mlflow.db").exists()
+
+
+@pytest.mark.parametrize("size", ["0", "1", "1.5", "-0.2"])
+def test_train_rechaza_test_size_fuera_de_rango(settings, tmp_path, size):
+    result = runner.invoke(
+        cli.app,
+        ["train", "--mock", "--test-size", size, "--tracking-uri", _uri(tmp_path)],
+    )
+    assert result.exit_code != 0
+    assert "test-size" in " ".join(result.output.split())
+
+
+def test_train_guarda_artefactos_en_data_dir(settings, tmp_path):
+    result = runner.invoke(
+        cli.app, ["train", "--mock", "--tracking-uri", _uri(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    csvs = list((settings.data_dir / "mlartifacts").rglob("*.csv"))
+    assert csvs, "los CSV por grupo deberían quedar en data_dir/mlartifacts"
