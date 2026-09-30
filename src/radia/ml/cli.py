@@ -37,6 +37,8 @@ def train(
     ] = None,
 ) -> None:
     """Entrena el modelo de cupo, lo compara con el baseline y lo registra en MLflow."""
+    if not 0 < test_size < 1:
+        raise typer.BadParameter("--test-size debe estar entre 0 y 1, sin incluirlos")
     settings = get_settings()
     if mock:
         features = make_gold_features(n=5000, seed=seed)
