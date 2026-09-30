@@ -19,12 +19,6 @@ from radia.ml.train import (
 )
 
 
-@pytest.fixture(autouse=True)
-def mlflow_aislado(tmp_path, monkeypatch):
-    monkeypatch.setenv("MLFLOW_DISABLE_AGENT_HINT", "1")
-    mlflow.set_tracking_uri(f"sqlite:///{tmp_path}/mlflow.db")
-
-
 @pytest.fixture
 def mocks():
     features = make_gold_features(400, seed=1)
