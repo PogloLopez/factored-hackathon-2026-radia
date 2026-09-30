@@ -189,3 +189,9 @@ def test_train_descarta_sin_ingreso_y_registra_descartes(mocks):
     assert dropped > 0
     total = build_training_table(features, labels)
     assert int(params["n_train"]) + int(params["n_test"]) + dropped == len(total)
+
+
+def test_run_experiment_registra_tarjeta_del_baseline(mocks):
+    run, _, _ = _run(*mocks)
+    params = mlflow.get_run(run.info.run_id).data.params
+    assert params["baseline_card_code"] == "CC_GOLD"
