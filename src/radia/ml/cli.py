@@ -63,7 +63,14 @@ def train(
         tracking_uri or f"sqlite:///{(settings.data_dir / 'mlflow.db').as_posix()}"
     )
     # Los artefactos van a data/local (no versionado), no a ./mlruns del repo.
-    if mlflow.get_experiment_by_name(EXPERIMENT) is None:
+    experiment = mlflow.get_experiment_by_name(EXPERIMENT)
+    # MLflow borra en suave: el experimento sigue existiendo y no se puede usar.
+    if experiment is not None and experiment.lifecycle_stage == "deleted":
+        raise typer.BadParameter(
+            f"el experimento {EXPERIMENT} está borrado en MLflow. Restáuralo con "
+            f"`uv run mlflow experiments restore -x {experiment.experiment_id}`"
+        )
+    if experiment is None:
         artifacts = (settings.data_dir / "mlartifacts").resolve()
         mlflow.create_experiment(EXPERIMENT, artifact_location=artifacts.as_uri())
     mlflow.set_experiment(EXPERIMENT)
