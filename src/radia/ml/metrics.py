@@ -16,8 +16,8 @@ import pandas as pd
 COLUMNS = ("y_true", "pred", "lower", "upper")
 
 
-def _check(results: pd.DataFrame) -> None:
-    """Rechaza entradas que sesgarían las métricas en silencio."""
+def _check(results: pd.DataFrame) -> pd.DataFrame:
+    """Rechaza entradas que sesgarían las métricas y devuelve las columnas en float."""
     missing = set(COLUMNS) - set(results.columns)
     if missing:
         raise ValueError(f"faltan columnas: {sorted(missing)}")
@@ -35,14 +35,16 @@ def _check(results: pd.DataFrame) -> None:
         raise ValueError("y_true y pred deben ser > 0")
     if not (cols["lower"] <= cols["upper"]).all():
         raise ValueError("se exige lower <= upper")
+    return cols
 
 
 def limit_metrics(results: pd.DataFrame) -> dict[str, float]:
-    _check(results)
-    y, pred = results["y_true"], results["pred"]
+    # Se calcula sobre la copia validada, no sobre `results`: "100" ya es 100.0.
+    cols = _check(results)
+    y, pred, lower, upper = (cols[c] for c in COLUMNS)
     ape = (y - pred).abs() / y
-    covered = (results["lower"] <= y) & (y <= results["upper"])
-    width = (results["upper"] - results["lower"]) / pred
+    covered = (lower <= y) & (y <= upper)
+    width = (upper - lower) / pred
     return {
         "n": float(len(results)),
         "mae_usd": float((y - pred).abs().mean()),
