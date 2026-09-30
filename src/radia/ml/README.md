@@ -38,6 +38,7 @@ uv run radia-ml train --seed 1 --test-size 0.25
 - La etiqueta trae la familia, no el nivel de tarjeta. CC_BASIC, CC_GOLD y CC_BLACK reciben la misma predicción y la política la recorta a su tope.
 - En la evaluación, el baseline de tarjetas usa el múltiplo de CC_GOLD. Queda registrado como `baseline_card_code`.
 - Cobertura nominal del rango: 80 %. Se reporta la real.
+- **Con datos reales (2026-09-30) el cupo no tiene señal.** Correlación ~0 con todas las features. El modelo empata con los cuantiles del cupo por familia, sin mirar al cliente (MAE 17.9k vs 18.1k USD). Los cupos parecen uniformes por familia. La mora > 30 días tampoco: sale al azar con ~9.5 % por producto (AUC del puntaje de buró 0.497).
 
 ## Reglas
 
