@@ -168,7 +168,12 @@ def audit_intent(settings: Settings) -> dict:
     per_text = pd.crosstab(df["text"], df["label"], normalize="index")
     frequent = df["text"].value_counts()
     frequent = frequent[frequent >= 1000].index
-    gap = (per_text.loc[frequent] - overall).abs().to_numpy().max()
+    # Sin textos frecuentes no hay con qué comparar: el desvío queda nulo.
+    gap = (
+        (per_text.loc[frequent] - overall).abs().to_numpy().max()
+        if len(frequent)
+        else float("nan")
+    )
     return {
         "rows": len(df),
         "distinct_texts": int(df["text"].nunique()),
