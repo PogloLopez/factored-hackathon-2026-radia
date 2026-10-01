@@ -59,7 +59,7 @@ uv run radia-ml intent              # --mock para probar el código
 - Métricas: accuracy y F1 macro con las clases de train fijas, global y por acento.
 - MLflow: experimento `intent-classifier`, métricas `model_*`, `baseline_majority_*`, `baseline_keywords_*`.
 - Las tablas de llamadas no entran al default de `radia-etl`: solo con `--tables`.
-- Pendiente: verificar señal con datos reales.
+- **Con datos reales (2026-10-01) no hay señal.** Solo 42 textos distintos en 171,321 transcripciones, casi todos "consultar saldo", con la misma proporción de categorías que el total. Modelo: accuracy 20.0 %, F1 macro 0.143. Palabras clave: 20.2 %, 0.131. Clase mayoritaria: 34.5 %, 0.086. Se conserva como evidencia de evaluación, no como componente del sistema.
 
 ## Reglas
 
