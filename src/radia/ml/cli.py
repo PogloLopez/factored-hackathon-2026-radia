@@ -158,7 +158,11 @@ def audit(
     ] = None,
 ) -> None:
     """Auditoría de señal: qué etiquetas se pueden predecir. Escribe un JSON."""
-    names = [n.strip() for n in only.split(",") if n.strip()] if only else None
+    names = None
+    if only is not None:
+        names = [n.strip() for n in only.split(",") if n.strip()]
+        if not names:
+            raise typer.BadParameter("--only vacío: nombra al menos un chequeo")
     unknown = set(names or []) - set(AUDITS)
     if unknown:
         raise typer.BadParameter(f"chequeos desconocidos: {sorted(unknown)}")
@@ -170,3 +174,8 @@ def audit(
     for name, result in results.items():
         typer.echo(f"{name:13} {json.dumps(result, ensure_ascii=False)[:160]}")
     typer.echo(f"Reporte: {out}")
+    # El reporte se escribe igual, pero un chequeo sin datos no pasa en silencio.
+    failed = sorted(n for n, r in results.items() if "error" in r)
+    if failed:
+        typer.echo(f"Chequeos sin datos: {failed}", err=True)
+        raise typer.Exit(1)
