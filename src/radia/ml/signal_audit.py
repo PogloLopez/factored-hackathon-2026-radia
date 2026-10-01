@@ -66,6 +66,9 @@ def rate_table_auc(groups: pd.Series, y: pd.Series) -> float:
 
 def _con(settings: Settings, tables: tuple[str, ...]) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
+    # USING SAMPLE con semilla solo repite la misma muestra con un hilo y orden fijo.
+    con.execute("SET threads = 1")
+    con.execute("SET preserve_insertion_order = true")
     for t in tables:
         path = silver_path(settings, t)
         if not path.exists():
