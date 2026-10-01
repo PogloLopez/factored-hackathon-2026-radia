@@ -1,5 +1,6 @@
 """Tests de la CLI de ML. Settings apuntan a tmp_path; MLflow usa sqlite temporal."""
 
+import json
 import re
 
 import pytest
@@ -162,3 +163,17 @@ def test_intent_rechaza_test_size_fuera_de_rango(settings, tmp_path, size):
     )
     assert result.exit_code != 0
     assert _contains(result.output, "test-size")
+
+
+def test_audit_only_desconocido_se_rechaza(settings):
+    result = runner.invoke(cli.app, ["audit", "--only", "xxx"])
+    assert result.exit_code != 0
+    assert _contains(result.output, "chequeos desconocidos")
+
+
+def test_audit_sin_silver_sale_0_y_escribe_reporte_con_error(settings):
+    result = runner.invoke(cli.app, ["audit", "--only", "intent"])
+    assert result.exit_code == 0, result.output
+    report = settings.data_dir / "reports" / "signal_audit.json"
+    assert report.exists()
+    assert "error" in json.loads(report.read_text(encoding="utf-8"))["intent"]
