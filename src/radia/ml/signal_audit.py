@@ -193,7 +193,8 @@ def audit_calls(settings: Settings) -> dict:
         """
     ).df()
     targets: dict[str, pd.Series] = {
-        "resolved_first_contact": df["was_resolved"].fillna(False).astype(bool),
+        # Nulo no es "no resuelto": esas filas se excluyen de esta etiqueta.
+        "resolved_first_contact": df["was_resolved"].astype("boolean"),
         "negative_sentiment": df["detected_sentiment"].isin(NEGATIVE_SENTIMENT),
         "requires_followup": df["requires_followup"].astype(bool),
         "escalated": df["was_escalated"].astype(bool),
@@ -209,12 +210,17 @@ def audit_calls(settings: Settings) -> dict:
     ]
     out = {}
     for name, y in targets.items():
+        known = y.notna().to_numpy()
+        y = y[known].astype(bool)
         out[name] = {
             "rate": float(y.mean()),
-            "model_auc": cv_auc(features, y),
-            "category_table_auc": rate_table_auc(df["reason_category"], y),
+            "n": int(known.sum()),
+            "model_auc": cv_auc(features[known], y),
+            "category_table_auc": rate_table_auc(df["reason_category"][known], y),
         }
-    rates = pd.DataFrame(targets).groupby(df["reason_category"]).mean()
+    rates = (
+        pd.DataFrame(targets).astype("Float64").groupby(df["reason_category"]).mean()
+    )
     out["rates_by_category"] = rates.round(4).to_dict(orient="index")
     return out
 
