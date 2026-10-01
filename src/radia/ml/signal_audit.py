@@ -243,6 +243,8 @@ def audit_transactions(settings: Settings) -> dict:
 
 
 def audit_churn(settings: Settings) -> dict:
+    """Churn (Closed o Inactive). Las features de actividad pueden ser consecuencia
+    del cierre, así que el AUC es un techo: si aun así da ~0.5, no hay señal."""
     con = _con(settings, ("customers", "transactions", "call_center_interactions"))
     df = con.execute(
         """
