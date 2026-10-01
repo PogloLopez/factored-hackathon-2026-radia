@@ -64,6 +64,10 @@ def rate_table_auc(groups: pd.Series, y: pd.Series) -> float:
     return float(roc_auc_score(y[~train].astype(bool), score))
 
 
+def _either_direction(auc: float) -> float:
+    return float(max(auc, 1 - auc))
+
+
 def _con(settings: Settings, tables: tuple[str, ...]) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     # USING SAMPLE con semilla solo repite la misma muestra con un hilo y orden fijo.
@@ -143,7 +147,9 @@ def audit_delinquency(settings: Settings) -> dict:
         "max_gap_vs_random_draw": float(
             np.abs(observed - expected)[big.to_numpy()].max()
         ),
-        "auc_credit_score": float(
+        # max(AUC, 1 - AUC): un puntaje alto puede significar menos mora, y un
+        # AUC < 0.5 también sería señal. 0.5 en ambos sentidos es azar.
+        "auc_credit_score": _either_direction(
             roc_auc_score(df.loc[score, "late"], df.loc[score, "credit_score"])
         ),
     }
