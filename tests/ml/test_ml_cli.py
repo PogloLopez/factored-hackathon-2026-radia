@@ -183,3 +183,9 @@ def test_audit_only_vacio_se_rechaza(settings):
     result = runner.invoke(cli.app, ["audit", "--only", ","])
     assert result.exit_code != 0
     assert _contains(result.output, "--only vacío")
+
+
+def test_nan_to_none_deja_el_reporte_en_json_estricto():
+    data = cli._nan_to_none({"a": float("nan"), "b": {"c": 1.5, "d": float("nan")}})
+    assert data == {"a": None, "b": {"c": 1.5, "d": None}}
+    json.dumps(data, allow_nan=False)

@@ -1,6 +1,7 @@
 """CLI de ML: `uv run radia-ml --help`."""
 
 import json
+import math
 from typing import Annotated
 
 import mlflow
@@ -148,6 +149,14 @@ def intent(
         typer.echo("Aviso: datos mock. Estas métricas no se reportan.")
 
 
+def _nan_to_none(value: object) -> object:
+    if isinstance(value, dict):
+        return {k: _nan_to_none(v) for k, v in value.items()}
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    return value
+
+
 @app.command()
 def audit(
     only: Annotated[
@@ -170,7 +179,9 @@ def audit(
     results = run_audit(settings, names)
     out = settings.data_dir / "reports" / "signal_audit.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    # NaN no es JSON válido: se escribe como null para lectores estrictos.
+    text = json.dumps(_nan_to_none(results), indent=2, ensure_ascii=False)
+    out.write_text(text, encoding="utf-8")
     for name, result in results.items():
         typer.echo(f"{name:13} {json.dumps(result, ensure_ascii=False)[:160]}")
     typer.echo(f"Reporte: {out}")
