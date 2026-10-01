@@ -171,9 +171,15 @@ def test_audit_only_desconocido_se_rechaza(settings):
     assert _contains(result.output, "chequeos desconocidos")
 
 
-def test_audit_sin_silver_sale_0_y_escribe_reporte_con_error(settings):
+def test_audit_sin_silver_sale_1_y_escribe_reporte_con_error(settings):
     result = runner.invoke(cli.app, ["audit", "--only", "intent"])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output
     report = settings.data_dir / "reports" / "signal_audit.json"
     assert report.exists()
     assert "error" in json.loads(report.read_text(encoding="utf-8"))["intent"]
+
+
+def test_audit_only_vacio_se_rechaza(settings):
+    result = runner.invoke(cli.app, ["audit", "--only", ","])
+    assert result.exit_code != 0
+    assert _contains(result.output, "--only vacío")
