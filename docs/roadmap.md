@@ -22,7 +22,8 @@ Pipeline completo en `develop`, probado con fixtures sintéticos:
 
 Checkpoints de Pablo:
 
-- [ ] Aprobar la descarga del manifiesto (2184 objetos, 1.25 GB, o 924 MB sin `campaign_sends`). Ver `src/radia/etl/README.md`
+- [x] Aprobar la descarga del manifiesto (924 MB sin `campaign_sends`). Ver `src/radia/etl/README.md`
+- [ ] Decidir el cupo de C6: hoy múltiplo del ingreso, propuesta mediana por familia. Ver [[auditoria_de_senal]]
 - [ ] Pesos del puntaje (`src/radia/etl/score_weights_v0.yaml`, provisionales, rango validado [150, 950])
 - [ ] Umbrales de bandas y topes por exposición (`src/radia/backend/policy/rules_v0.yaml`, provisionales)
 - [ ] Congelar contratos v1 tras perfilar los datos reales
@@ -43,3 +44,10 @@ Trabajo:
 - [ ] Orquestador, tools y API (C8). LLM: Groq
 - [ ] Casos de evaluación (C10) y runner
 - [ ] Frontend mínimo
+
+Tras la [[auditoria_de_senal]] (2026-10-01):
+
+- [ ] Isabella: sección de evaluación de ML con la auditoría, model card del modelo de cupo, 1-2 slides
+- [ ] Pablo: revisar y mergear la normalización de vocabulario en Silver (sin ella Gold excluye a México); regenerar Gold, puntaje y ofertas con datos reales; declarar los nulos reales
+- [ ] Edwin: derivación de Queja a humano con la tabla de categorías; intención con reglas y LLM; evaluación con casos held-out
+- [ ] Esteban: demo con un caso por nivel de atención, incluida una queja derivada; slides con los hallazgos de datos
