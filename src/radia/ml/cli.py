@@ -1,5 +1,6 @@
 """CLI de ML: `uv run radia-ml --help`."""
 
+import json
 from typing import Annotated
 
 import mlflow
@@ -12,6 +13,7 @@ from radia.etl.gold import gold_path
 from radia.etl.offers import read_parquet
 from radia.etl.silver import silver_path
 from radia.ml.intent import make_mock_calls, run_intent_experiment
+from radia.ml.signal_audit import AUDITS, run_audit
 from radia.ml.train import run_experiment
 
 app = typer.Typer(no_args_is_help=True, help="Modelos de Radia.")
@@ -144,3 +146,27 @@ def intent(
     typer.echo(f"Run MLflow: {run.info.run_id} ({source})")
     if mock:
         typer.echo("Aviso: datos mock. Estas métricas no se reportan.")
+
+
+@app.command()
+def audit(
+    only: Annotated[
+        str | None,
+        typer.Option(
+            help=f"Chequeos separados por coma. Opciones: {','.join(AUDITS)}."
+        ),
+    ] = None,
+) -> None:
+    """Auditoría de señal: qué etiquetas se pueden predecir. Escribe un JSON."""
+    names = [n.strip() for n in only.split(",") if n.strip()] if only else None
+    unknown = set(names or []) - set(AUDITS)
+    if unknown:
+        raise typer.BadParameter(f"chequeos desconocidos: {sorted(unknown)}")
+    settings = get_settings()
+    results = run_audit(settings, names)
+    out = settings.data_dir / "reports" / "signal_audit.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    for name, result in results.items():
+        typer.echo(f"{name:13} {json.dumps(result, ensure_ascii=False)[:160]}")
+    typer.echo(f"Reporte: {out}")
