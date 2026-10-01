@@ -269,7 +269,13 @@ def audit_campaigns(settings: Settings) -> dict:
         """
     ).df()
     y = df.pop("converted").astype(bool)
-    return {"conversion_rate": float(y.mean()), "conversion_model_auc": cv_auc(df, y)}
+    channel = df["send_channel"].astype("string").fillna("NA")
+    return {
+        "conversion_rate": float(y.mean()),
+        "conversion_model_auc": cv_auc(df, y),
+        "channel_table_auc": rate_table_auc(channel, y),
+        "rate_by_channel": y.groupby(channel).mean().round(4).to_dict(),
+    }
 
 
 AUDITS: dict[str, Callable[[Settings], dict]] = {
