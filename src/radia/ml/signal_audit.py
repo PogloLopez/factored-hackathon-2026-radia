@@ -253,11 +253,13 @@ def audit_churn(settings: Settings) -> dict:
 def audit_campaigns(settings: Settings) -> dict:
     """Conversión de campañas. `campaign_sends` no tiene spec: se lee crudo."""
     raw = settings.raw_dir / "data" / "campaign_sends"
-    if not raw.exists():
+    if not any(raw.glob("**/*.csv")):
         raise FileNotFoundError(f"falta campaign_sends crudo en {raw}")
     glob = sql_literal(Path(raw) / "**" / "*.csv")
     con = _con(settings, ("customers",))
     camp = settings.raw_dir / "data" / "marketing_campaigns.csv"
+    if not camp.exists():
+        raise FileNotFoundError(f"falta marketing_campaigns crudo en {camp}")
     df = con.execute(
         f"""
         SELECT s.send_channel, s.template_used, m.campaign_type, m.campaign_objective,
