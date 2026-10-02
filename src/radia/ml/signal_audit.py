@@ -194,11 +194,11 @@ def audit_calls(settings: Settings) -> dict:
         """
     ).df()
     targets: dict[str, pd.Series] = {
-        # Nulo no es "no resuelto": esas filas se excluyen de esta etiqueta.
+        # Nulo no es "no": esas filas se excluyen de cada etiqueta.
         "resolved_first_contact": df["was_resolved"].astype("boolean"),
         "negative_sentiment": df["detected_sentiment"].isin(NEGATIVE_SENTIMENT),
-        "requires_followup": df["requires_followup"].astype(bool),
-        "escalated": df["was_escalated"].astype(bool),
+        "requires_followup": df["requires_followup"].astype("boolean"),
+        "escalated": df["was_escalated"].astype("boolean"),
     }
     features = df[
         [
@@ -293,7 +293,10 @@ def audit_campaigns(settings: Settings) -> dict:
         USING SAMPLE {SAMPLE} ROWS (reservoir, {SEED})
         """
     ).df()
-    y = df.pop("converted").astype(bool)
+    # Conversión nula no es "no convirtió": esas filas se excluyen.
+    y = df.pop("converted").astype("boolean")
+    known = y.notna().to_numpy()
+    df, y = df[known], y[known].astype(bool)
     channel = df["send_channel"].astype("string").fillna("NA")
     return {
         "conversion_rate": float(y.mean()),
