@@ -283,17 +283,21 @@ def audit_campaigns(settings: Settings) -> dict:
     camp = settings.raw_dir / "data" / "marketing_campaigns.csv"
     if not camp.exists():
         raise FileNotFoundError(f"falta marketing_campaigns crudo en {camp}")
+    # DuckDB muestrea antes del WHERE: el filtro va en una subconsulta para que la
+    # muestra salga de los envíos entregados.
     df = con.execute(
         f"""
-        SELECT s.send_channel, s.template_used, m.campaign_type, m.campaign_objective,
-               m.promoted_product, m.target_segment,
-               c.segment, c.country, c.credit_score, c.accepts_marketing,
-               lower(s.had_conversion) = 'true' AS converted
-        FROM read_csv({glob}, all_varchar = true, union_by_name = true) s
-        LEFT JOIN read_csv({sql_literal(camp)}, all_varchar = true) m USING (campaign_id)
-        JOIN customers c USING (customer_id)
-        WHERE lower(s.was_delivered) = 'true'
-        USING SAMPLE {SAMPLE} ROWS (reservoir, {SEED})
+        SELECT * FROM (
+            SELECT s.send_channel, s.template_used, m.campaign_type,
+                   m.campaign_objective, m.promoted_product, m.target_segment,
+                   c.segment, c.country, c.credit_score, c.accepts_marketing,
+                   lower(s.had_conversion) = 'true' AS converted
+            FROM read_csv({glob}, all_varchar = true, union_by_name = true) s
+            LEFT JOIN read_csv({sql_literal(camp)}, all_varchar = true) m
+                USING (campaign_id)
+            JOIN customers c USING (customer_id)
+            WHERE lower(s.was_delivered) = 'true'
+        ) USING SAMPLE {SAMPLE} ROWS (reservoir, {SEED})
         """
     ).df()
     # Conversión nula no es "no convirtió": esas filas se excluyen.
