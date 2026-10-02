@@ -80,6 +80,11 @@ def test_categorical_deja_numericas_intactas_y_no_muta_la_entrada():
     assert x["txt"].isna().any()
 
 
+def test_run_audit_anota_error_cuando_falta_gold(tmp_path):
+    out = run_audit(_settings(tmp_path), ["limit"])
+    assert "falta Gold" in out["limit"]["error"]
+
+
 def test_run_audit_anota_error_cuando_falta_silver(tmp_path):
     s = Settings(_env_file=None, data_dir=tmp_path / "data")
     names = ["delinquency", "intent", "calls", "transactions", "churn"]
