@@ -96,10 +96,11 @@ def audit_limit(settings: Settings) -> dict:
     from radia.ml.metrics import limit_metrics
 
     gold = settings.data_dir / "gold"
-    table = build_training_table(
-        read_parquet(gold / "customer_features.parquet"),
-        read_parquet(gold / "limit_labels.parquet"),
-    )
+    paths = [gold / "customer_features.parquet", gold / "limit_labels.parquet"]
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"falta Gold: {path}")
+    table = build_training_table(*(read_parquet(path) for path in paths))
     table = table[table["monthly_income_usd"] > 0]
     corr = table[[*NUMERIC_FEATURES, TARGET]].corr(method="spearman")[TARGET]
     train, test = split_by_customer(table, seed=SEED)
