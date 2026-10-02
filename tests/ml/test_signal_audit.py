@@ -227,7 +227,7 @@ def test_audit_calls_excluye_sentimiento_nulo(tmp_path, monkeypatch):
     assert out["rate"] == pytest.approx(35 / 70)
 
 
-def _campaign_files(s, converted: list[str]) -> None:
+def _campaign_files(s, converted: list[str], delivered: list[str] | None = None):
     n = len(converted)
     rng = _rng()
     sends = s.raw_dir / "data" / "campaign_sends"
@@ -238,7 +238,7 @@ def _campaign_files(s, converted: list[str]) -> None:
             "customer_id": range(n),
             "send_channel": rng.choice(["SMS", "Email"], n),
             "template_used": "T1",
-            "was_delivered": "true",
+            "was_delivered": delivered or "true",
             "had_conversion": converted,
         }
     ).to_csv(sends / "a.csv", index=False)
@@ -272,3 +272,13 @@ def test_audit_campaigns_excluye_conversion_nula(tmp_path):
     _campaign_files(s, converted)
     out = audit_campaigns(s)
     assert out["conversion_rate"] == pytest.approx(40 / 80)
+
+
+def test_audit_campaigns_muestrea_despues_de_filtrar_entregados(tmp_path, monkeypatch):
+    monkeypatch.setattr(signal_audit, "SAMPLE", 100)
+    rows = []
+    monkeypatch.setattr(signal_audit, "cv_auc", lambda x, y: rows.append(len(x)) or 0.5)
+    s = _settings(tmp_path)
+    _campaign_files(s, ["true", "false"] * 200, delivered=["true", "false"] * 200)
+    audit_campaigns(s)
+    assert rows == [100]
