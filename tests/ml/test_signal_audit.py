@@ -184,3 +184,79 @@ def test_audit_calls_excluye_was_resolved_nulo(tmp_path, monkeypatch):
     for name in ("negative_sentiment", "requires_followup", "escalated"):
         assert out[name]["n"] == n
         assert out["resolved_first_contact"]["n"] < out[name]["n"]
+
+
+def _calls(n: int) -> pd.DataFrame:
+    rng = _rng()
+    return pd.DataFrame(
+        {
+            "interaction_type": rng.choice(["Inbound", "Outbound"], n),
+            "channel": rng.choice(["Phone", "Chat"], n),
+            "reason_category": rng.choice(["Queja", "Saldo", "Tarjeta"], n),
+            "wait_time_seconds": rng.integers(0, 300, n),
+            "customer_detected_accent": rng.choice(["MX", "CO"], n),
+            "was_resolved": rng.random(n) < 0.5,
+            "requires_followup": pd.array(rng.random(n) < 0.5, dtype="boolean"),
+            "was_escalated": pd.array(rng.random(n) < 0.5, dtype="boolean"),
+            "detected_sentiment": rng.choice(["Negativo", "Neutro"], n),
+        }
+    )
+
+
+def test_audit_calls_excluye_followup_y_escalado_nulos(tmp_path, monkeypatch):
+    monkeypatch.setattr(signal_audit, "SAMPLE", 1000)
+    s = _settings(tmp_path)
+    df = _calls(90)
+    df.loc[:9, "requires_followup"] = pd.NA
+    df.loc[:4, "was_escalated"] = pd.NA
+    write_parquet(df, silver_path(s, "call_center_interactions"))
+    out = audit_calls(s)
+    assert out["requires_followup"]["n"] == 80
+    assert out["escalated"]["n"] == 85
+
+
+def _campaign_files(s, converted: list[str]) -> None:
+    n = len(converted)
+    rng = _rng()
+    sends = s.raw_dir / "data" / "campaign_sends"
+    sends.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "campaign_id": 1,
+            "customer_id": range(n),
+            "send_channel": rng.choice(["SMS", "Email"], n),
+            "template_used": "T1",
+            "was_delivered": "true",
+            "had_conversion": converted,
+        }
+    ).to_csv(sends / "a.csv", index=False)
+    pd.DataFrame(
+        {
+            "campaign_id": [1],
+            "campaign_type": ["X"],
+            "campaign_objective": ["Y"],
+            "promoted_product": ["Z"],
+            "target_segment": ["Mass"],
+        }
+    ).to_csv(s.raw_dir / "data" / "marketing_campaigns.csv", index=False)
+    write_parquet(
+        pd.DataFrame(
+            {
+                "customer_id": range(n),
+                "segment": "Mass",
+                "country": "MX",
+                "credit_score": rng.integers(300, 850, n),
+                "accepts_marketing": True,
+            }
+        ),
+        silver_path(s, "customers"),
+    )
+
+
+def test_audit_campaigns_excluye_conversion_nula(tmp_path):
+    s = _settings(tmp_path)
+    converted = ["true", "false"] * 45
+    converted[:10] = [""] * 10
+    _campaign_files(s, converted)
+    out = audit_campaigns(s)
+    assert out["conversion_rate"] == pytest.approx(40 / 80)
