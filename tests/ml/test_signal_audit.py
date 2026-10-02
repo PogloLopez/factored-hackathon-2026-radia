@@ -282,3 +282,44 @@ def test_audit_campaigns_muestrea_despues_de_filtrar_entregados(tmp_path, monkey
     _campaign_files(s, ["true", "false"] * 200, delivered=["true", "false"] * 200)
     audit_campaigns(s)
     assert rows == [100]
+
+
+def test_audit_calls_rates_by_category_excluye_nulos(tmp_path, monkeypatch):
+    monkeypatch.setattr(signal_audit, "SAMPLE", 1000)
+    s = _settings(tmp_path)
+    df = _calls(90)
+    df["reason_category"] = ["Queja", "Saldo", "Tarjeta"] * 30
+    # Queja: 30 filas, 5 resueltas y 25 nulas. Si el nulo contara como False
+    # la tasa sería 5/30; excluido, es 1.0.
+    queja = df.index[df["reason_category"] == "Queja"]
+    df["was_resolved"] = pd.array([False] * 90, dtype="boolean")
+    df.loc[queja[:5], "was_resolved"] = True
+    df.loc[queja[5:], "was_resolved"] = pd.NA
+    write_parquet(df, silver_path(s, "call_center_interactions"))
+    rates = audit_calls(s)["rates_by_category"]
+    assert rates["Queja"]["resolved_first_contact"] == pytest.approx(1.0)
+    assert rates["Saldo"]["resolved_first_contact"] == pytest.approx(0.0)
+
+
+def test_audit_calls_rates_by_category_excluye_sentimiento_nulo(tmp_path, monkeypatch):
+    monkeypatch.setattr(signal_audit, "SAMPLE", 1000)
+    s = _settings(tmp_path)
+    df = _calls(90)
+    df["reason_category"] = ["Queja", "Saldo", "Tarjeta"] * 30
+    df["detected_sentiment"] = "Neutro"
+    queja = df.index[df["reason_category"] == "Queja"]
+    df.loc[queja[:5], "detected_sentiment"] = "Negativo"
+    df.loc[queja[10:], "detected_sentiment"] = None
+    write_parquet(df, silver_path(s, "call_center_interactions"))
+    rates = audit_calls(s)["rates_by_category"]
+    assert rates["Queja"]["negative_sentiment"] == pytest.approx(0.5)
+
+
+def test_run_audit_sigue_con_los_otros_chequeos_si_uno_falta(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    monkeypatch.setitem(signal_audit.AUDITS, "ok", lambda settings: {"v": 1})
+    out = run_audit(s, ["limit", "ok", "campaigns"])
+    assert "falta Gold" in out["limit"]["error"]
+    assert out["ok"] == {"v": 1}
+    assert "error" in out["campaigns"]
+    assert list(out) == ["limit", "ok", "campaigns"]
