@@ -215,6 +215,18 @@ def test_audit_calls_excluye_followup_y_escalado_nulos(tmp_path, monkeypatch):
     assert out["escalated"]["n"] == 85
 
 
+def test_audit_calls_excluye_sentimiento_nulo(tmp_path, monkeypatch):
+    monkeypatch.setattr(signal_audit, "SAMPLE", 1000)
+    s = _settings(tmp_path)
+    df = _calls(90)
+    df["detected_sentiment"] = ["Negativo", "Neutro"] * 45
+    df.loc[:19, "detected_sentiment"] = None
+    write_parquet(df, silver_path(s, "call_center_interactions"))
+    out = audit_calls(s)["negative_sentiment"]
+    assert out["n"] == 70
+    assert out["rate"] == pytest.approx(35 / 70)
+
+
 def _campaign_files(s, converted: list[str]) -> None:
     n = len(converted)
     rng = _rng()
