@@ -196,7 +196,10 @@ def audit_calls(settings: Settings) -> dict:
     targets: dict[str, pd.Series] = {
         # Nulo no es "no": esas filas se excluyen de cada etiqueta.
         "resolved_first_contact": df["was_resolved"].astype("boolean"),
-        "negative_sentiment": df["detected_sentiment"].isin(NEGATIVE_SENTIMENT),
+        "negative_sentiment": df["detected_sentiment"]
+        .isin(NEGATIVE_SENTIMENT)
+        .astype("boolean")
+        .mask(df["detected_sentiment"].isna()),
         "requires_followup": df["requires_followup"].astype("boolean"),
         "escalated": df["was_escalated"].astype("boolean"),
     }
